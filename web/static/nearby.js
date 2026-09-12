@@ -51,21 +51,39 @@
     doctors:          { label: "Doctor",              rank: 2 },
     pharmacy:         { label: "Pharmacy",            rank: 3 },
     social_facility:  { label: "Social facility",     rank: 2 },
+    day_centre:       { label: "Day centre",          rank: 2 },
+    outreach:         { label: "Outreach service",    rank: 2 },
+    water_point:      { label: "Water point",         rank: 2 },
+    centre:           { label: "Health centre",       rank: 1 },
+    doctor:           { label: "Doctor",              rank: 2 },
     community_centre: { label: "Community centre",    rank: 2 },
     drinking_water:   { label: "Drinking water",      rank: 2 },
-    toilets:          { label: "Toilets",             rank: 4 },
     police:           { label: "Police",              rank: 3 },
     fire_station:     { label: "Fire station",        rank: 3 },
   };
 
-  const QUERY = (lat, lon) => `[out:json][timeout:30];
+  // Toilets are deliberately not queried. Near a camp they are mapped in the
+  // hundreds -- 209 of 250 results in one test of this area -- and they were
+  // filling the result cap before a single refugee site reached the browser. A
+  // panel that buries the camp under two hundred latrines is worse than one
+  // that does not mention latrines.
+  //
+  // Tag choices matter more than they look. A refugee camp is amenity=refugee_site
+  // -- an amenity value, not a social_facility one, which is how this query
+  // originally had it and why camps never appeared. amenity=shelter is filtered
+  // by shelter_type because, untagged, it is usually a bus stop. Clinics are
+  // matched on healthcare=* as well, because a large number are tagged that way
+  // and nothing else.
+  const QUERY = (lat, lon) => `[out:json][timeout:40];
 (
-  nwr["amenity"~"^(hospital|clinic|doctors|pharmacy|police|fire_station|community_centre|drinking_water|toilets|social_facility)$"](around:${RADIUS_M},${lat},${lon});
+  nwr["amenity"~"^(refugee_site|hospital|clinic|doctors|pharmacy|police|fire_station|community_centre|social_facility|drinking_water|water_point)$"](around:${RADIUS_M},${lat},${lon});
   nwr["amenity"="shelter"]["shelter_type"~"^(emergency_shelter|basic_hut)$"](around:${RADIUS_M},${lat},${lon});
-  nwr["emergency"="assembly_point"](around:${RADIUS_M},${lat},${lon});
-  nwr["social_facility"~"^(shelter|homeless_shelter|food_bank|soup_kitchen|refugee_site)$"](around:${RADIUS_M},${lat},${lon});
+  nwr["emergency"~"^(assembly_point|shelter)$"](around:${RADIUS_M},${lat},${lon});
+  nwr["social_facility"~"^(shelter|homeless_shelter|food_bank|soup_kitchen|day_centre|outreach)$"](around:${RADIUS_M},${lat},${lon});
+  nwr["healthcare"~"^(hospital|clinic|centre|doctor)$"](around:${RADIUS_M},${lat},${lon});
+  nwr["man_made"="water_tap"]["drinking_water"="yes"](around:${RADIUS_M},${lat},${lon});
 );
-out center 220;`;
+out center 400;`;
 
   let panel = null;
 
@@ -101,7 +119,10 @@ out center 220;`;
   // --- data -------------------------------------------------------------
 
   function classify(tags) {
-    const keys = [tags.emergency, tags.social_facility, tags.shelter_type, tags.amenity];
+    const keys = [tags.amenity === "refugee_site" ? "refugee_site" : null,
+                  tags.emergency, tags.social_facility, tags.shelter_type,
+                  tags.amenity, tags.healthcare,
+                  tags.man_made === "water_tap" ? "drinking_water" : null];
     for (const k of keys) if (k && KINDS[k]) return KINDS[k];
     return null;
   }
@@ -183,6 +204,11 @@ out center 220;`;
         </div>
       </li>`).join("");
     host.innerHTML = `
+      ${shown.some((p) => p.kind.rank === 0) ? "" : `<p class="nb-none-urgent">
+         No refugee sites, shelters or assembly points are recorded here — only
+         the everyday services below. In most places there are none because
+         there is no emergency; in an emergency the map is often the last thing
+         to be updated. Neither is evidence that none exist.</p>`}
       <p class="nb-origin">${list.length > shown.length
           ? "Nearest " + shown.length + " of " + list.length + " places"
           : shown.length + " place" + (shown.length === 1 ? "" : "s")}

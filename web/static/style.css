@@ -926,3 +926,8 @@ body.demo-open { overflow: hidden; }
 #nb-approx { margin-top: 10px; }
 .nb-credit a { color: var(--muted); }
 .nb-credit a:hover { color: var(--accent); }
+.nb-none-urgent {
+  margin: 14px 0 4px; padding: 11px 13px; border-radius: 9px;
+  background: var(--possible-bg); color: #7a4a02;
+  font-size: 13px; line-height: 1.55;
+}
