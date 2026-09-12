@@ -411,17 +411,44 @@ request rather than being fetched, so nothing needs to reach back into this app.
 ## Layout
 
 ```
-engine/faces.py           synthetic face generation: latents and captures
-engine/face_embedding.py  FaceEmbeddingService, alignment, calibration
-engine/match.py           the scoring model (reference implementation)
-engine/generate.py        synthetic registries, faces and ground truth
-engine/evaluate.py        accuracy against planted ground truth
-web/app.py                caseworker API and the face embedding endpoint
-web/static/               review interface and the scripted walk-through
-n8n/reunify_workflow.ts   the 17-stage pipeline, as SDK code
-scripts/                  n8n payload builder and the parity check
-data/                     generated corpus — all synthetic, safe to delete
+engine/vocab.py             controlled vocabularies — names, places, nationalities,
+                            relationships. All fictional.
+engine/generate.py          builds the two registries, the faces and the ground truth
+engine/faces.py             synthetic face generation: latents and captures
+engine/face_embedding.py    FaceEmbeddingService — eye detection, alignment,
+                            the descriptor, and calibration
+engine/match.py             the scoring model. This is the reference implementation;
+                            the other two copies are checked against it
+engine/evaluate.py          accuracy against the planted ground truth
+
+web/app.py                  caseworker API, review queue, face embedding endpoint
+web/static/app.js           the review interface
+web/static/demo.js          the scripted walk-through
+web/static/engine.js        the scoring model in the browser — GENERATED, do not edit
+web/static/tryit.js         score records a visitor types in
+web/static/nearby.js        find help near you, over OpenStreetMap
+web/static/static-mode.js   serves precomputed answers when there is no server
+serve.py                    demo-day launcher: binds the LAN, prints a QR code
+
+n8n/reunify_workflow.ts     the 17-stage pipeline as SDK code — the readable copy
+n8n/reunify_workflow.json   the same pipeline, importable into n8n
+
+scripts/build_static.py         precompute every answer and build the static site
+scripts/build_browser_engine.py how web/static/engine.js is produced
+scripts/export_n8n_workflow.py  how n8n/reunify_workflow.json is produced
+scripts/check_parity.py         assert the three implementations still agree
+scripts/n8n_payload.py          build a request body for the pipeline
+scripts/verify_n8n_parity.mjs   run the workflow's Code nodes outside n8n
+
+data/                       generated corpus — synthetic, gitignored, rebuilt by
+                            `python -m engine.generate`
+dist/                       the static build — generated, gitignored
 ```
+
+The scoring model exists three times: in `engine/match.py`, in the workflow's
+Code nodes, and in the browser. Only the first is written by hand. The other
+two are generated from it or checked against it, and `scripts/check_parity.py`
+fails the build if they drift.
 
 ---
 
