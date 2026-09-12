@@ -966,3 +966,18 @@ a.nb-name:hover { color: var(--accent); text-decoration: underline; }
 }
 .nb-copy:hover { text-decoration: underline; }
 .nb-item { align-items: start; }
+
+/* A recorded decision, shown on the card it was taken on. The banner above the
+   list is easy to miss when the button that produced it is a screen further
+   down. */
+.candidate.decided { border-color: #0d7038; box-shadow: 0 0 0 1px #0d7038 inset; }
+.candidate.decided.decided-rule_out {
+  border-color: var(--muted); box-shadow: 0 0 0 1px var(--muted) inset; opacity: .78;
+}
+.btn-decided {
+  background: var(--strong) !important; border-color: var(--strong) !important;
+  color: #fff !important; cursor: default;
+}
+.candidate.decided-rule_out .btn-decided {
+  background: var(--muted) !important; border-color: var(--muted) !important;
+}

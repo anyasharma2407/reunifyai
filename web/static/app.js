@@ -320,9 +320,34 @@ async function selectRecord(recordId) {
            No Registry B record reached the minimum potential match score for review.
            That is a legitimate outcome — this person may simply not be in Registry B.
          </div>`);
+
+  // A decision taken earlier must still be visible when the record is reopened.
+  markDecidedCards(payload.decision || null);
 }
 
 /* ------------------------------------------------------------ actions */
+
+/* Show the decision on the card that was clicked.
+   The banner sits above the candidate list, so on anything but a short page
+   the only acknowledgement of a decision appeared off-screen above the button
+   that triggered it -- it looked like nothing had happened. Feedback belongs
+   where the click was. */
+function markDecidedCards(decision) {
+  document.querySelectorAll(".candidate").forEach((card) => {
+    const isSubject = decision && card.dataset.bId === decision.b_record_id;
+    card.classList.toggle("decided", !!isSubject);
+    card.classList.toggle("decided-rule_out",
+      !!isSubject && decision.decision === "rule_out");
+    card.querySelectorAll("[data-action]").forEach((b) => {
+      const mine = isSubject && b.dataset.action === decision.decision;
+      b.classList.toggle("btn-decided", !!mine);
+      if (!b.dataset.label) b.dataset.label = b.textContent.trim();
+      b.textContent = mine
+        ? (decision.decision === "refer" ? "✓ Referred" : "✓ Ruled out")
+        : b.dataset.label;
+    });
+  });
+}
 
 async function recordDecision(bRecordId, decision) {
   const entry = await api("/api/review", {
@@ -333,12 +358,14 @@ async function recordDecision(bRecordId, decision) {
     }),
   });
   renderDecision(entry);
+  markDecidedCards(entry);
   await loadRecords(el("search").value);
 }
 
 async function clearDecision() {
   await api(`/api/review/${state.selected}`, { method: "DELETE" });
   renderDecision(null);
+  markDecidedCards(null);
   await loadRecords(el("search").value);
 }
 
