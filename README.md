@@ -266,6 +266,39 @@ coverage damping and the bands must agree; a divergence there is a bug.
 
 ---
 
+## Deploying
+
+The synthetic corpus is generated at **build** time, not at boot. Generation
+draws 160 faces and embeds them, which takes about eight seconds; doing that on
+every container start would make each deploy and restart sit there not serving.
+Baking it into the image also means every replica holds the identical corpus.
+
+```bash
+docker build -t reunifyai .
+docker run -p 8000:8000 reunifyai
+```
+
+The image is ~99 MB and the service is stateless, so the smallest instance any
+host offers is enough: 6,400 comparisons take well under a second.
+
+**Render** — New → Blueprint → point it at this repository. `render.yaml` is
+already here; it uses the Docker runtime and health-checks `/api/meta`.
+
+**Fly.io / Railway / Cloud Run** — all build the `Dockerfile` directly. Bind to
+`$PORT`, which the CMD already does.
+
+**Buildpack hosts without Docker** — `Procfile` covers these, but note it has
+to generate the corpus at boot, because buildpack filesystems do not carry
+build output into the running process. Expect a slower cold start.
+
+One caveat worth knowing before a demo: a deployed instance and the n8n
+workflow still do not talk to each other. Stage 06 of the workflow points at a
+face-embedding service, and the preferred path is that embeddings arrive in the
+request rather than being fetched, so nothing needs to reach back into this
+app.
+
+---
+
 ## Layout
 
 ```
