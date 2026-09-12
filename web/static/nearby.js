@@ -179,9 +179,8 @@ out center 400;`;
     if (!list.length) {
       host.innerHTML = `<div class="nb-empty">
           <strong>Nothing found within ${RADIUS_M / 1000} km.</strong>
-          <p>That does not mean there is nothing there. It means the community
-             map has no record of it. Contact local emergency services or an
-             official relief line.</p>
+          <p>The map has no record here — that is not the same as nothing being
+             there.</p>
         </div>`;
       return;
     }
@@ -204,11 +203,7 @@ out center 400;`;
         </div>
       </li>`).join("");
     host.innerHTML = `
-      ${shown.some((p) => p.kind.rank === 0) ? "" : `<p class="nb-none-urgent">
-         No refugee sites, shelters or assembly points are recorded here — only
-         the everyday services below. In most places there are none because
-         there is no emergency; in an emergency the map is often the last thing
-         to be updated. Neither is evidence that none exist.</p>`}
+      ${shown.some((p) => p.kind.rank === 0) ? "" : `<p class="nb-none-urgent">No shelters or camps recorded nearby — everyday services only.</p>`}
       <p class="nb-origin">${list.length > shown.length
           ? "Nearest " + shown.length + " of " + list.length + " places"
           : shown.length + " place" + (shown.length === 1 ? "" : "s")}
@@ -239,8 +234,7 @@ out center 400;`;
       <div class="nb-empty">
         <strong class="nb-error-line">${esc(message)}</strong>
         ${hint ? `<p>${esc(hint)}</p>` : ""}
-        <p>You can still search: type a town or area above, or use your
-           approximate area, which needs no permission.</p>
+        <p>Search by place name above, or:</p>
         <button class="btn" id="nb-approx" type="button">Use my approximate area</button>
       </div>`;
     panel.querySelector("#nb-approx").addEventListener("click", useApproximateArea);
@@ -329,20 +323,10 @@ out center 400;`;
           <button class="demo-close" data-nb-close aria-label="Close">×</button>
         </div>
 
-        <div class="nb-warning">
-          <strong>This is not an emergency service.</strong>
-          If you are in immediate danger, contact your local emergency number.
-          The places below come from OpenStreetMap, a public map anyone can
-          edit. They are <strong>not verified</strong>, may be out of date, and
-          are listed as whatever the map records them to be — a pharmacy is a
-          pharmacy, not a relief centre. Always confirm before travelling.
-        </div>
-
-        <p class="nb-privacy">
-          Your location is used to search and nothing else. It is rounded to
-          about 100&nbsp;m, sent only to OpenStreetMap's public search service,
-          and never stored or sent to us — this page has no server. If you would
-          rather not share it, search by place name instead.
+        <p class="nb-warning">
+          <strong>Not an emergency service.</strong> Places come from
+          OpenStreetMap and are <strong>not verified</strong> — confirm before
+          travelling.
         </p>
 
         <div class="nb-actions">
@@ -352,21 +336,28 @@ out center 400;`;
                  aria-label="Search by place name">
           <button class="btn" id="nb-search" type="button">Search</button>
         </div>
-        <p class="nb-alt">
-          No location permission? <button class="nb-link" id="nb-approx-top"
-          type="button">Use my approximate area</button> — worked out from your
-          network connection, city-level accuracy, and your network address is
-          visible to the service that resolves it.
-        </p>
+
+        <details class="nb-details">
+          <summary>How this works</summary>
+          <p>Your location is rounded to about 100&nbsp;m, sent only to
+             OpenStreetMap's public search service, and never stored — this page
+             has no server. Searching by place name works just as well if you
+             would rather not share it.</p>
+          <p>No location permission?
+             <button class="nb-link" id="nb-approx-top" type="button">Use my
+             approximate area</button> instead — worked out from your network
+             connection. City-level accuracy, and your network address is
+             visible to the service that resolves it.</p>
+          <p>Results are labelled as whatever the map records them to be: a
+             pharmacy is a pharmacy, not a relief centre.</p>
+        </details>
 
         <div id="nb-results"></div>
 
         <p class="nb-credit">
-          Place data ©&nbsp;<a href="https://www.openstreetmap.org/copyright"
-          target="_blank" rel="noopener">OpenStreetMap contributors</a>,
-          available under the Open Database Licence, retrieved live through the
-          public Overpass API; place-name search by Nominatim. Unverified
-          community data. This page holds no records and stores nothing.
+          Data ©&nbsp;<a href="https://www.openstreetmap.org/copyright"
+          target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL),
+          via Overpass and Nominatim.
         </p>
       </div>`;
     panel.addEventListener("click", (e) => {

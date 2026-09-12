@@ -931,3 +931,17 @@ body.demo-open { overflow: hidden; }
   background: var(--possible-bg); color: #7a4a02;
   font-size: 13px; line-height: 1.55;
 }
+
+/* Condensed panel: one warning line, detail behind a toggle. The warning is
+   short but not optional -- unverified data presented to someone in trouble is
+   the one thing here that has to stay visible without being asked for. */
+.nb-warning {
+  padding: 10px 13px; margin-bottom: 14px;
+  font-size: 13.5px; line-height: 1.5;
+}
+.nb-details { margin: 12px 0 0; font-size: 12.5px; color: var(--ink-soft); }
+.nb-details summary {
+  cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13px;
+}
+.nb-details p { margin: 9px 0 0; line-height: 1.55; }
+.nb-none-urgent { margin: 14px 0 2px; padding: 9px 12px; font-size: 13px; }
