@@ -75,7 +75,9 @@ PY
 
 echo
 echo "Space:  https://huggingface.co/spaces/$REPO"
-echo "App:    https://$(echo "$USERNAME" | tr '[:upper:]' '[:lower:]')-$(echo "$SPACE_NAME" | tr '[:upper:]' '[:lower:]').hf.space"
+# Static Spaces are served from *.static.hf.space. The plain *.hf.space
+# address 404s, which looks exactly like a failed deploy.
+echo "App:    https://$(echo "$USERNAME" | tr '[:upper:]' '[:lower:]')-$(echo "$SPACE_NAME" | tr '[:upper:]' '[:lower:]').static.hf.space"
 echo "Demo:   .../?demo=1"
 echo
 echo "A static Space goes live as soon as the push finishes -- there is no"

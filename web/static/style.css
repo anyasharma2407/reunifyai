@@ -527,9 +527,15 @@ body.demo-open { overflow: hidden; }
 .demo-overlay {
   position: fixed; inset: 0; z-index: 60;
   background: rgba(8, 14, 24, .72);
-  display: flex; align-items: center; justify-content: center;
+  /* align-items:center looks right until the panel is taller than the screen,
+     at which point the overflow goes off the TOP and cannot be scrolled back
+     to -- on a phone the walk-through opened with the first face already cut
+     in half and no way to reach it. `margin:auto` on the panel still centres
+     it when it fits, and lets it scroll from the top when it does not. */
+  display: flex; align-items: flex-start; justify-content: center;
   padding: 24px; overflow-y: auto;
 }
+.demo-panel, .ti-panel { margin: auto; }
 /* An author `display` declaration beats the user agent's `[hidden]` rule, so
    without this the overlay never actually hides: the panel is empty but its
    backdrop stays over the whole page, washing the interface grey. */
@@ -737,8 +743,10 @@ body.demo-open { overflow: hidden; }
 .ti-picker {
   position: fixed; inset: 0; z-index: 70;
   background: rgba(8, 14, 24, .78);
-  display: flex; align-items: center; justify-content: center; padding: 24px;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 24px; overflow-y: auto;
 }
+.ti-picker-inner { margin: auto; }
 .ti-picker-inner {
   width: min(760px, 100%); max-height: 86vh; overflow-y: auto;
   background: var(--panel); border-radius: 14px; padding: 22px;
@@ -813,6 +821,18 @@ body.demo-open { overflow: hidden; }
   .face-pct { font-size: 34px; }
 
   .demo-overlay, .ti-picker { padding: 10px; }
+
+  /* Two faces side by side with the score beneath them, rather than a single
+     column three screens tall. */
+  .face-pair, .demo-faces { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .face-pair .face-fig:nth-of-type(1),
+  .demo-faces figure:nth-of-type(1) { grid-column: 1; grid-row: 1; }
+  .face-pair .face-fig:nth-of-type(2),
+  .demo-faces figure:nth-of-type(2) { grid-column: 2; grid-row: 1; }
+  .face-verdict, .demo-facescore { grid-column: 1 / -1; grid-row: 2; min-width: 0; }
+  .face-fig img { max-width: 140px; }
+  .demo-faces img { max-width: 140px; }
+  .demo-facepct { font-size: 40px; }
   .demo-panel { padding: 18px 15px 16px; border-radius: 12px; }
   .ti-picker-inner { padding: 16px 14px; }
   .demo-total { flex-direction: column; align-items: flex-start; gap: 10px; }
