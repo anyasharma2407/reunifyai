@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reunification Engine</title>
-<link rel="stylesheet" href="/static/style.css?v=17">
+<link rel="stylesheet" href="/static/style.css?v=18">
 </head>
 <body>
 
@@ -64,7 +64,9 @@
     </button>
 
     <div class="showcase" id="showcase" hidden>
-      <span class="showcase-label">Difficult cases</span>
+      <span class="showcase-label">Try a hard one</span>
+      <p class="showcase-hint">The same person, written down differently by two
+         registries. The number is how many details disagree.</p>
       <div class="showcase-chips" id="showcase-chips"></div>
     </div>
 
@@ -81,9 +83,13 @@
           <path d="M30.5 30.5 L41 41" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
         </svg>
       </div>
-      <h2>Select a person from Registry A</h2>
-      <p>The engine compares that record against every record in Registry B and returns a
-         ranked shortlist with the reasoning behind each candidate.</p>
+      <h2>Pick someone from the list on the left</h2>
+      <p>Two aid organisations hold separate lists of displaced people, and
+         neither can search the other's. Choose a person and this compares their
+         record against all 80 in the second list, then shows the closest
+         matches and exactly why each one came up.</p>
+      <p class="empty-hint">New here? Press <strong>Run demo</strong> to watch it
+         work on one pair, or pick one of the hard examples on the left.</p>
     </div>
 
     <div id="results" hidden>
@@ -92,10 +98,10 @@
         <div class="subject-head">
           <span class="eyebrow">Enquiry record · Registry A</span>
           <div class="subject-actions">
-            <label class="toggle" title="Demo overlay: reveals which pair the data generator planted. The matcher never sees this.">
+            <label class="toggle" title="These records were generated, so we know which pair is really the same person. The matcher is never told — this only reveals the answer to you, after it has scored.">
               <input type="checkbox" id="reveal-toggle">
               <span class="toggle-track"><span class="toggle-thumb"></span></span>
-              <span class="toggle-label">Reveal ground truth</span>
+              <span class="toggle-label">Show the answer</span>
             </label>
           </div>
         </div>
@@ -130,10 +136,10 @@
      the walk-through starts and removes it again on close, so there is never a
      full-viewport element sitting in the page able to intercept clicks. -->
 
-<script src="/static/app.js?v=17"></script>
-<script src="/static/demo.js?v=17"></script>
-<script src="/static/engine.js?v=17"></script>
-<script src="/static/tryit.js?v=17"></script>
-<script src="/static/nearby.js?v=17"></script>
+<script src="/static/app.js?v=18"></script>
+<script src="/static/demo.js?v=18"></script>
+<script src="/static/engine.js?v=18"></script>
+<script src="/static/tryit.js?v=18"></script>
+<script src="/static/nearby.js?v=18"></script>
 </body>
 </html>

@@ -983,3 +983,11 @@ a.nb-name:hover { color: var(--accent); text-decoration: underline; }
 }
 .btn-undo { border-color: var(--line); color: var(--ink-soft); }
 .btn-undo:hover { border-color: var(--conflict); color: var(--conflict); }
+
+/* "Difficult cases" and "obstacles" were internal vocabulary that meant
+   nothing to a reader. The section now says what it is for and what the
+   number counts. */
+.showcase-hint {
+  margin: 4px 0 9px; font-size: 12px; line-height: 1.5; color: var(--muted);
+}
+.empty-hint { margin-top: 14px !important; font-size: 13.5px; color: var(--muted); }

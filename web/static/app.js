@@ -309,8 +309,9 @@ async function selectRecord(recordId) {
     ? `Top ${n} candidate${n === 1 ? "" : "s"} for human review`
     : "No candidates above the reporting threshold";
   el("results-sub").textContent =
-    `Ranked from ${payload.compared_against} Registry B records. `
-    + `A potential match score expresses evidential support, not identity.`;
+    `Compared against all ${payload.compared_against} records in Registry B. `
+    + `The score is how strongly a person should check this pair — not a `
+    + `statement that they are the same person.`;
 
   el("candidates").innerHTML =
     (payload.ground_truth ? renderTruthRibbon(payload.ground_truth) : "")
@@ -396,7 +397,7 @@ async function loadShowcase() {
   el("showcase-chips").innerHTML = cases.map((c) =>
     `<button class="chip" data-id="${esc(c.a_record_id)}"
              title="${esc(c.headline)}">
-       <b>${esc(c.display_name)}</b> · ${c.obstacle_count} obstacles
+       <b>${esc(c.display_name)}</b> · ${c.obstacle_count} details differ
      </button>`).join("");
 }
 
