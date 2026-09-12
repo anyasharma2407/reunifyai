@@ -66,7 +66,8 @@ def main() -> int:
 
     # --- frontend ---------------------------------------------------------
     (out / "static").mkdir(parents=True)
-    for name in ("app.js", "demo.js", "style.css", "static-mode.js"):
+    for name in ("app.js", "demo.js", "style.css", "static-mode.js",
+                 "engine.js", "tryit.js"):
         shutil.copy2(STATIC / name, out / "static" / name)
 
     html = (STATIC / "index.html").read_text()
@@ -104,6 +105,20 @@ def main() -> int:
     }))
 
     (out / "api" / "records.json").write_text(json.dumps({"records": registry_a}))
+
+    # Face embeddings, for scoring records a visitor types in. Loaded lazily by
+    # tryit.js -- it is 2.4 MB, and most visitors never open that panel.
+    if face_index is not None:
+        cal = face_index.service.calibration
+        (out / "api" / "embeddings.json").write_text(json.dumps({
+            "embeddings": {k: [round(float(x), 5) for x in v]
+                           for k, v in face_index.embeddings.items()},
+            "calibration": {"background_mean": cal.background_mean,
+                            "background_sd": cal.background_sd},
+            "backend": face_index.meta.get("backend"),
+            "dimensions": face_index.meta.get("dimensions"),
+            "notice": "Embeddings of procedurally drawn synthetic faces.",
+        }))
 
     print(f"Scoring {len(registry_a)} x {len(registry_b)} "
           f"= {len(registry_a) * len(registry_b):,} comparisons...")

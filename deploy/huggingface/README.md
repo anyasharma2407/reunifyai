@@ -27,6 +27,10 @@ downloaded, or shipped.
 
 ## Try it
 
+* **`/?try=demo` — enter your own two records and score them.** This runs the
+  real matcher in your browser, by the same rules the pipeline uses. Nothing
+  you type is sent anywhere. Faces are chosen from the synthetic corpus; there
+  is deliberately no way to upload a photograph.
 * `/?demo=1` — the scripted walk-through: two synthetic faces side by side,
   facial similarity, then the potential match score.
 * `/#A-0013` — the caseworker review screen for that pair, with the full

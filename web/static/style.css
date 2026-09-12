@@ -670,3 +670,91 @@ body.demo-open { overflow: hidden; }
   .dscore-row, .dscore-fill, .demo-verify, .demo-steps li { transition: none; }
   .demo-steps li.active .step-mark { animation: none; }
 }
+
+/* ==================================================================
+   Score your own records
+   ================================================================== */
+
+.btn-tryit {
+  width: 100%; margin: 0 0 14px; justify-content: center;
+  background: var(--panel); color: var(--accent);
+  border: 1.5px solid var(--accent); font-weight: 650;
+}
+.btn-tryit:hover { background: var(--accent-sf); }
+
+.ti-panel { width: min(980px, 100%); max-height: 92vh; overflow-y: auto; }
+.ti-note {
+  margin: 0 0 18px; font-size: 13px; line-height: 1.55; color: var(--ink-soft);
+}
+.ti-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.ti-col h4 {
+  margin: 0 0 12px; font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+}
+
+.ti-face {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+  padding: 10px; border-radius: 10px; background: var(--line-soft);
+}
+.ti-face img {
+  width: 60px; height: 60px; border-radius: 8px; object-fit: cover;
+  border: 1px solid var(--line); background: #fff; flex: none;
+}
+.ti-pick { padding: 6px 10px; font-size: 12.5px; }
+.ti-faceid {
+  margin-left: auto; font-size: 11.5px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ti-field { display: block; margin-bottom: 9px; }
+.ti-field span {
+  display: block; margin-bottom: 3px; font-size: 11.5px;
+  font-weight: 600; color: var(--muted);
+}
+.ti-field input, .ti-field select {
+  width: 100%; padding: 8px 10px; font: inherit; font-size: 14px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--ink);
+}
+.ti-field input:focus, .ti-field select:focus {
+  outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent);
+}
+
+.ti-actions {
+  display: flex; gap: 10px; align-items: center;
+  margin: 20px 0 4px; padding-top: 16px; border-top: 1px solid var(--line-soft);
+}
+#ti-result:not(:empty) { margin-top: 18px; }
+
+/* --------------------------------------------------------- face picker */
+
+.ti-picker {
+  position: fixed; inset: 0; z-index: 70;
+  background: rgba(8, 14, 24, .78);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.ti-picker-inner {
+  width: min(760px, 100%); max-height: 86vh; overflow-y: auto;
+  background: var(--panel); border-radius: 14px; padding: 22px;
+}
+.ti-face-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px;
+}
+.ti-face-opt {
+  border: 1px solid var(--line); background: var(--panel);
+  border-radius: 9px; padding: 5px; cursor: pointer; text-align: center;
+}
+.ti-face-opt:hover { border-color: var(--accent); background: var(--accent-sf); }
+.ti-face-opt img {
+  width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; display: block;
+}
+.ti-face-opt span {
+  display: block; margin-top: 4px; font-size: 10.5px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .ti-cols { grid-template-columns: 1fr; }
+  .ti-actions { flex-wrap: wrap; }
+  .ti-actions .btn { width: 100%; }
+}
