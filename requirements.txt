@@ -1,0 +1,18 @@
+# Runtime dependencies for the Reunification Engine.
+#
+# Deliberately small: the face matching is built on NumPy and Pillow rather
+# than a deep-learning stack, so the whole thing installs in seconds and runs
+# anywhere. See README for the optional ArcFace backend, which is the one
+# thing that would pull in onnxruntime.
+
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+
+# Name matching: phonetic coders and edit distance.
+jellyfish>=1.1
+RapidFuzz>=3.9
+
+# Face generation and embedding.
+numpy>=2.0
+Pillow>=10.3

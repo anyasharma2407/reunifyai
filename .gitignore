@@ -1,0 +1,21 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# The synthetic corpus is generated, deterministically, from a seed:
+#   python -m engine.generate --seed 7 --size 80
+# Committing 160 PNGs and a 2.4 MB embeddings file would put 18 MB of
+# reproducible output in version control. The seed is what matters, and it
+# lives in the code.
+data/
+
+# Optional face model, downloaded by the user (see README)
+models/
+
+.DS_Store
+.env

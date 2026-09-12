@@ -1,0 +1,13 @@
+# Render blueprint. Deploy with: render.com -> New -> Blueprint -> point at
+# this repository. The free instance type is enough: the matcher does 6,400
+# comparisons in well under a second and the service holds no state.
+services:
+  - type: web
+    name: reunifyai
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/meta
+    envVars:
+      - key: PORT
+        value: 8000

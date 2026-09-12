@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reunification Engine</title>
+<link rel="stylesheet" href="/static/style.css?v=6">
+</head>
+<body>
+
+<!-- Persistent, non-dismissible. This must never scroll away. -->
+<div class="notice-bar" role="note">
+  <span class="notice-chip">Prototype</span>
+  <span class="notice-text">
+    <strong>Decision support for human review — not an automated matching system.</strong>
+    No result here identifies anyone. Every record shown is <strong>synthetic test data</strong>;
+    no real person, place or organisation is represented.
+  </span>
+</div>
+
+<header class="masthead">
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 40 40" width="34" height="34">
+        <circle cx="12" cy="14" r="6" fill="none" stroke="currentColor" stroke-width="2.4"/>
+        <circle cx="28" cy="26" r="6" fill="none" stroke="currentColor" stroke-width="2.4"
+                stroke-dasharray="3 3"/>
+        <path d="M16.5 18.5 L23.5 21.5" stroke="currentColor" stroke-width="2.4"
+              stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div>
+      <h1>Reunification Engine</h1>
+      <p class="tagline">Candidate matching across disconnected family-tracing registries</p>
+    </div>
+  </div>
+  <div class="stats" id="stats"><span class="stat-loading">loading corpus…</span></div>
+</header>
+
+<main class="layout">
+
+  <!-- ---------------------------------------------------------------- -->
+  <aside class="panel registry-panel">
+    <div class="panel-head">
+      <h2>Registry A</h2>
+      <span class="panel-sub" id="registry-count"></span>
+    </div>
+
+    <div class="search-wrap">
+      <input id="search" type="search" autocomplete="off"
+             placeholder="Search name, place or record ID…" aria-label="Search Registry A">
+    </div>
+
+    <button class="btn btn-demo" id="run-demo" type="button">
+      <span class="demo-dot"></span> Run demo
+    </button>
+
+    <div class="showcase" id="showcase" hidden>
+      <span class="showcase-label">Difficult cases</span>
+      <div class="showcase-chips" id="showcase-chips"></div>
+    </div>
+
+    <ul class="record-list" id="record-list"></ul>
+  </aside>
+
+  <!-- ---------------------------------------------------------------- -->
+  <section class="panel results-panel">
+
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon" aria-hidden="true">
+        <svg viewBox="0 0 48 48" width="56" height="56">
+          <circle cx="21" cy="21" r="13" fill="none" stroke="currentColor" stroke-width="2.6"/>
+          <path d="M30.5 30.5 L41 41" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h2>Select a person from Registry A</h2>
+      <p>The engine compares that record against every record in Registry B and returns a
+         ranked shortlist with the reasoning behind each candidate.</p>
+    </div>
+
+    <div id="results" hidden>
+
+      <div class="subject-card">
+        <div class="subject-head">
+          <span class="eyebrow">Enquiry record · Registry A</span>
+          <div class="subject-actions">
+            <label class="toggle" title="Demo overlay: reveals which pair the data generator planted. The matcher never sees this.">
+              <input type="checkbox" id="reveal-toggle">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-label">Reveal ground truth</span>
+            </label>
+          </div>
+        </div>
+        <div class="subject-body">
+          <div id="subject-photo"></div>
+          <div class="subject-detail">
+            <h2 class="subject-name" id="subject-name"></h2>
+            <dl class="field-grid" id="subject-fields"></dl>
+          </div>
+        </div>
+      </div>
+
+      <div id="decision-banner" class="decision-banner" hidden></div>
+
+      <div class="results-head">
+        <h3 id="results-title"></h3>
+        <p class="results-sub" id="results-sub"></p>
+      </div>
+
+      <div id="candidates"></div>
+
+      <p class="footer-note">
+        Ranked candidates are a starting point for a trained case worker, not a conclusion.
+        Confirming that two records describe the same person requires human verification
+        through the originating organisations.
+      </p>
+    </div>
+  </section>
+</main>
+
+<!-- The demo overlay is not in the markup on purpose: demo.js builds it when
+     the walk-through starts and removes it again on close, so there is never a
+     full-viewport element sitting in the page able to intercept clicks. -->
+
+<script src="/static/app.js?v=6"></script>
+<script src="/static/demo.js?v=6"></script>
+</body>
+</html>
