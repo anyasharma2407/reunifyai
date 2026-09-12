@@ -378,27 +378,45 @@ async function recordDecision(bRecordId, decision) {
   });
   renderDecision(entry);
   markDecidedCards(entry);
-  await loadRecords(el("search").value);
+  await Promise.all([loadRecords(el("search").value), loadQueue()]);
 }
 
 async function clearDecision() {
   await api(`/api/review/${state.selected}`, { method: "DELETE" });
   renderDecision(null);
   markDecidedCards(null);
-  await loadRecords(el("search").value);
+  await Promise.all([loadRecords(el("search").value), loadQueue()]);
 }
 
 /* -------------------------------------------------------- showcase */
 
-async function loadShowcase() {
-  const { cases } = await api("/api/showcase?limit=5");
-  if (!cases.length) return;
-  el("showcase").hidden = false;
-  el("showcase-chips").innerHTML = cases.map((c) =>
-    `<button class="chip" data-id="${esc(c.a_record_id)}"
-             title="${esc(c.headline)}">
-       <b>${esc(c.display_name)}</b> · ${c.obstacle_count} details differ
-     </button>`).join("");
+async function loadQueue() {
+  const data = await api("/api/queue?limit=12");
+  const host = el("showcase");
+  if (!data.queue.length) {
+    host.hidden = false;
+    el("showcase-chips").innerHTML =
+      `<p class="queue-done">Every record with a candidate has been reviewed.</p>`;
+    return;
+  }
+  host.hidden = false;
+  // The count is the whole queue, not the handful being shown -- "12 waiting"
+  // when 80 are would understate the work by a factor of seven.
+  const waiting = data.waiting ?? data.queue.length;
+  el("queue-count").textContent = data.reviewed
+    ? `${waiting} left · ${data.reviewed} reviewed`
+    : `${waiting} waiting`;
+
+  el("showcase-chips").innerHTML = data.queue.map((r) => `
+    <button class="queue-row" data-id="${esc(r.a_record_id)}"
+            title="Strongest candidate scores ${r.score} of 100">
+      <span class="queue-score band-text-${esc(r.band)}">${Math.round(r.score)}</span>
+      <span class="queue-name">
+        ${esc(r.display_name)}
+        <span class="queue-sub">${r.candidate_count} candidate${r.candidate_count === 1 ? "" : "s"}${
+          r.face_similarity != null ? ` · face ${Math.round(r.face_similarity)}%` : ""}</span>
+      </span>
+    </button>`).join("");
 }
 
 /* ------------------------------------------------------------ wiring */
@@ -421,7 +439,7 @@ el("record-list").addEventListener("keydown", (e) => {
 });
 
 el("showcase-chips").addEventListener("click", (e) => {
-  const chip = e.target.closest(".chip");
+  const chip = e.target.closest(".queue-row, .chip");
   if (chip) selectRecord(chip.dataset.id);
 });
 
@@ -456,7 +474,7 @@ window.addEventListener("hashchange", selectFromHash);
 
 (async function init() {
   try {
-    await Promise.all([loadMeta(), loadRecords(), loadShowcase()]);
+    await Promise.all([loadMeta(), loadRecords(), loadQueue()]);
     selectFromHash();
   } catch (err) {
     el("stats").innerHTML =

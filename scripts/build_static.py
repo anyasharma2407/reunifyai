@@ -144,6 +144,36 @@ def main() -> int:
         }
         (out / "api" / "match" / f"{rid}.json").write_text(json.dumps(payload))
 
+    # --- review queue -----------------------------------------------------
+    # What a caseworker actually wants on opening the tool: which records have
+    # a candidate worth their time, strongest first. The "hard examples" this
+    # replaced were a demo shortcut -- useful for showing the engine off,
+    # useless to anyone doing the work, because nobody sits down wanting to see
+    # a difficult case.
+    queue = []
+    for rec in registry_a:
+        rid = rec["record_id"]
+        payload = json.loads((out / "api" / "match" / f"{rid}.json").read_text())
+        cands = payload["candidates"]
+        if not cands:
+            continue
+        top = cands[0]
+        queue.append({
+            "a_record_id": rid,
+            "display_name": f"{rec['given_name']} {rec['family_name']}",
+            "score": top["potential_match_score"],
+            "band": top["band"],
+            "candidate_count": len(cands),
+            "face_similarity": top.get("face_similarity"),
+        })
+    queue.sort(key=lambda q: -q["score"])
+    (out / "api" / "queue.json").write_text(json.dumps({
+        "queue": queue,
+        "reviewed": 0,
+        "notice": "Ranked by the strongest candidate found for each record. "
+                  "A high score means look sooner, not that a match is confirmed.",
+    }))
+
     # --- showcase ---------------------------------------------------------
     hard = sorted((p for p in truth["pairs"] if p["difficulty"] == "hard"),
                   key=lambda p: len(p["divergences"]), reverse=True)

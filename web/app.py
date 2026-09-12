@@ -73,6 +73,9 @@ TRUTH_BY_A = {p["a_record_id"]: p for p in GROUND_TRUTH["pairs"]}
 # and it is discarded when the process stops.
 REVIEW_LOG: dict[str, dict] = {}
 
+# Filled on first request to /api/queue.
+_QUEUE_CACHE: list[dict] | None = None
+
 
 # --------------------------------------------------------------------------
 # Models
@@ -173,6 +176,50 @@ def match(record_id: str, top_n: int = 3, reveal: bool = False):
             "note": "Demo overlay only — the matcher never sees this.",
         }
     return payload
+
+
+@app.get("/api/queue")
+def queue(limit: int = 12):
+    """
+    The review queue: which records have a candidate worth a person's time.
+
+    This is the thing the project claims to do -- help an organisation decide
+    what to look at first -- so it is the list the interface opens on. Records
+    the reviewer has already dealt with drop out; a worklist that keeps showing
+    you what you have finished is not a worklist.
+
+    Scored on demand and cached. At demo scale the full cross-comparison takes
+    well under a second, so there is nothing to gain from precomputing it here
+    and something to lose in staleness.
+    """
+    global _QUEUE_CACHE
+    if _QUEUE_CACHE is None:
+        rows = []
+        for rec in REGISTRY_A:
+            cands = top_candidates(rec, REGISTRY_B, top_n=3, floor=25.0,
+                                   face_index=FACE_INDEX)
+            if not cands:
+                continue
+            top = cands[0]
+            rows.append({
+                "a_record_id": rec["record_id"],
+                "display_name": f"{rec['given_name']} {rec['family_name']}",
+                "score": top["potential_match_score"],
+                "band": top["band"],
+                "candidate_count": len(cands),
+                "face_similarity": top.get("face_similarity"),
+            })
+        rows.sort(key=lambda r: -r["score"])
+        _QUEUE_CACHE = rows
+
+    pending = [r for r in _QUEUE_CACHE if r["a_record_id"] not in REVIEW_LOG]
+    return {
+        "queue": pending[:limit],
+        "waiting": len(pending),
+        "reviewed": len(_QUEUE_CACHE) - len(pending),
+        "notice": "Ranked by the strongest candidate found for each record. "
+                  "A high score means look sooner, not that a match is confirmed.",
+    }
 
 
 @app.get("/api/showcase")

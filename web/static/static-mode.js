@@ -81,6 +81,20 @@
     // --- everything else is precomputed -----------------------------------
     if (path === "/api/meta") return loadJson("/api/meta.json").then(json);
     if (path === "/api/showcase") return loadJson("/api/showcase.json").then(json);
+    if (path === "/api/queue") {
+      return loadJson("/api/queue.json").then((q) => {
+        const reviews = readReviews();
+        // A record the reviewer has already dealt with drops out of the queue:
+        // a worklist that keeps showing you what you have finished is not a
+        // worklist.
+        const pending = q.queue.filter((r) => !reviews[r.a_record_id]);
+        const limit = Number(params.get("limit") || 12);
+        return json({ queue: pending.slice(0, limit),
+                      waiting: pending.length,
+                      reviewed: q.queue.length - pending.length,
+                      notice: q.notice });
+      });
+    }
     if (path === "/api/demo") return loadJson("/api/demo.json").then(json);
 
     if (path === "/api/records") {

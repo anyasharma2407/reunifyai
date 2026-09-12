@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reunification Engine</title>
-<link rel="stylesheet" href="/static/style.css?v=18">
+<link rel="stylesheet" href="/static/style.css?v=20">
 </head>
 <body>
 
@@ -64,9 +64,12 @@
     </button>
 
     <div class="showcase" id="showcase" hidden>
-      <span class="showcase-label">Try a hard one</span>
-      <p class="showcase-hint">The same person, written down differently by two
-         registries. The number is how many details disagree.</p>
+      <div class="queue-head">
+        <span class="showcase-label">Review queue</span>
+        <span class="queue-count" id="queue-count"></span>
+      </div>
+      <p class="showcase-hint">The records with the strongest candidate waiting
+         in the other registry. Highest first — start at the top.</p>
       <div class="showcase-chips" id="showcase-chips"></div>
     </div>
 
@@ -89,7 +92,7 @@
          record against all 80 in the second list, then shows the closest
          matches and exactly why each one came up.</p>
       <p class="empty-hint">New here? Press <strong>Run demo</strong> to watch it
-         work on one pair, or pick one of the hard examples on the left.</p>
+         work on one pair, or start at the top of the review queue.</p>
     </div>
 
     <div id="results" hidden>
@@ -136,10 +139,10 @@
      the walk-through starts and removes it again on close, so there is never a
      full-viewport element sitting in the page able to intercept clicks. -->
 
-<script src="/static/app.js?v=18"></script>
-<script src="/static/demo.js?v=18"></script>
-<script src="/static/engine.js?v=18"></script>
-<script src="/static/tryit.js?v=18"></script>
-<script src="/static/nearby.js?v=18"></script>
+<script src="/static/app.js?v=20"></script>
+<script src="/static/demo.js?v=20"></script>
+<script src="/static/engine.js?v=20"></script>
+<script src="/static/tryit.js?v=20"></script>
+<script src="/static/nearby.js?v=20"></script>
 </body>
 </html>
