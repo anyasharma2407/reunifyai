@@ -204,9 +204,27 @@ out center 220;`;
     }
   }
 
+  // A failed location lookup must not be a dead end. Someone looking for a
+  // shelter does not want to be told "unavailable" -- they want the next thing
+  // to try, so each failure names its likely cause and leaves two working
+  // alternatives in front of them.
+  function locationFailed(message, hint) {
+    panel.querySelector("#nb-results").innerHTML = `
+      <div class="nb-empty">
+        <strong class="nb-error-line">${esc(message)}</strong>
+        ${hint ? `<p>${esc(hint)}</p>` : ""}
+        <p>You can still search: type a town or area above, or use your
+           approximate area, which needs no permission.</p>
+        <button class="btn" id="nb-approx" type="button">Use my approximate area</button>
+      </div>`;
+    panel.querySelector("#nb-approx").addEventListener("click", useApproximateArea);
+    const input = panel.querySelector("#nb-place");
+    if (input) input.focus();
+  }
+
   function useMyLocation() {
     if (!navigator.geolocation) {
-      setStatus("This browser cannot provide a location. Search by place name instead.", true);
+      locationFailed("This browser cannot provide a location.", "");
       return;
     }
     setStatus("Waiting for your device to provide a location…", false);
@@ -219,12 +237,47 @@ out center 220;`;
         const lon = Number(pos.coords.longitude.toFixed(3));
         runAt(lat, lon, "your approximate location");
       },
-      (err) => setStatus(
-        err.code === err.PERMISSION_DENIED
-          ? "Location permission was declined. You can search by place name instead."
-          : "Could not get a location (" + err.message + "). Try searching by place name.",
-        true),
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          locationFailed("Location permission was declined.",
+            "You can allow it from the padlock or location icon in the address bar.");
+        } else if (err.code === err.TIMEOUT) {
+          locationFailed("Your device took too long to find a location.",
+            "This is common indoors or with a weak signal.");
+        } else {
+          // POSITION_UNAVAILABLE almost always means the browser asked the
+          // operating system and the operating system refused -- most often
+          // because location services are switched off system-wide, which no
+          // amount of granting permission in the browser will fix.
+          locationFailed("Your device would not provide a location.",
+            "This usually means location services are turned off for the whole " +
+            "system rather than just this page — on macOS, System Settings → " +
+            "Privacy & Security → Location Services; on Windows, Settings → " +
+            "Privacy → Location.");
+        }
+      },
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 });
+  }
+
+  // Approximate area, worked out from the network connection rather than the
+  // device. It needs no permission and works where GPS is switched off, but it
+  // is city-level at best and the address is visible to the service that
+  // resolves it -- so it is offered explicitly and never used on its own
+  // initiative.
+  async function useApproximateArea() {
+    setStatus("Working out your approximate area from your connection…", false);
+    try {
+      const res = await fetch("https://get.geojs.io/v1/ip/geo.json");
+      if (!res.ok) throw new Error("the lookup service did not respond");
+      const d = await res.json();
+      const lat = Number(d.latitude), lon = Number(d.longitude);
+      if (!isFinite(lat) || !isFinite(lon)) throw new Error("no area could be determined");
+      const where = [d.city, d.country].filter(Boolean).join(", ") || "your area";
+      await runAt(lat, lon, where + " (approximate, from your connection)");
+    } catch (err) {
+      setStatus("Could not determine an approximate area: " + err.message +
+                ". Please search by place name.", true);
+    }
   }
 
   async function searchPlace() {
@@ -273,6 +326,12 @@ out center 220;`;
                  aria-label="Search by place name">
           <button class="btn" id="nb-search" type="button">Search</button>
         </div>
+        <p class="nb-alt">
+          No location permission? <button class="nb-link" id="nb-approx-top"
+          type="button">Use my approximate area</button> — worked out from your
+          network connection, city-level accuracy, and your network address is
+          visible to the service that resolves it.
+        </p>
 
         <div id="nb-results"></div>
 
@@ -286,6 +345,7 @@ out center 220;`;
     });
     panel.querySelector("#nb-locate").addEventListener("click", useMyLocation);
     panel.querySelector("#nb-search").addEventListener("click", searchPlace);
+    panel.querySelector("#nb-approx-top").addEventListener("click", useApproximateArea);
     panel.querySelector("#nb-place").addEventListener("keydown", (e) => {
       if (e.key === "Enter") searchPlace();
     });
