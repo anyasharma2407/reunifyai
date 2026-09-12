@@ -838,3 +838,81 @@ body.demo-open { overflow: hidden; }
   .demo-total { flex-direction: column; align-items: flex-start; gap: 10px; }
   .results-head h3 { font-size: 17px; }
 }
+
+/* ==================================================================
+   Find help near you
+   ------------------------------------------------------------------
+   The warning is styled to be read, not dismissed. Everything else in
+   this interface is for a caseworker at a desk; this is the one panel
+   someone might act on while they are in trouble, and the difference
+   between "a pharmacy is near you" and "a relief centre is near you"
+   is the difference between a useful tool and a dangerous one.
+   ================================================================== */
+
+.btn-help {
+  width: 100%; margin: 0 0 14px; justify-content: center;
+  background: #0d7038; color: #fff; border-color: #0d7038; font-weight: 650;
+}
+.btn-help:hover { filter: brightness(1.08); }
+
+.nb-panel { width: min(820px, 100%); }
+
+.nb-warning {
+  padding: 13px 15px; border-radius: 10px; margin-bottom: 12px;
+  background: var(--conflict-bg); color: #7d2018;
+  font-size: 13.5px; line-height: 1.55;
+  border-left: 4px solid var(--conflict);
+}
+.nb-privacy {
+  margin: 0 0 16px; font-size: 12.5px; line-height: 1.55; color: var(--ink-soft);
+}
+.nb-credit {
+  margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--line-soft);
+  font-size: 11.5px; color: var(--muted); line-height: 1.5;
+}
+
+.nb-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.nb-or { color: var(--muted); font-size: 13px; }
+#nb-place {
+  flex: 1 1 190px; min-width: 0; padding: 9px 11px;
+  font: inherit; font-size: 14px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+}
+#nb-place:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.nb-origin { margin: 16px 0 8px; font-size: 13px; color: var(--muted); }
+.nb-error { margin: 16px 0 0; color: var(--conflict); font-size: 14px; font-weight: 600; }
+.nb-empty {
+  margin-top: 16px; padding: 14px; border-radius: 10px; background: var(--line-soft);
+  font-size: 13.5px; line-height: 1.55;
+}
+.nb-empty p { margin: 6px 0 0; color: var(--ink-soft); }
+
+.nb-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.nb-item {
+  display: grid; grid-template-columns: 132px 1fr auto;
+  gap: 12px; align-items: start;
+  padding: 11px 4px; border-bottom: 1px solid var(--line-soft);
+}
+.nb-kind {
+  font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--strong); padding-top: 2px;
+}
+.nb-name { font-weight: 620; font-size: 14.5px; }
+.nb-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.nb-dist { text-align: right; white-space: nowrap; }
+.nb-km { display: block; font-weight: 650; font-variant-numeric: tabular-nums; }
+.nb-dir { font-size: 11.5px; color: var(--muted); }
+.nb-map {
+  display: block; margin-top: 4px; font-size: 12px;
+  color: var(--accent); text-decoration: none; font-weight: 600;
+}
+.nb-map:hover { text-decoration: underline; }
+
+@media (max-width: 640px) {
+  .nb-item { grid-template-columns: 1fr auto; gap: 8px; }
+  .nb-kind { grid-column: 1 / -1; }
+  .nb-actions { gap: 8px; }
+  .nb-actions .btn { flex: 1 1 auto; }
+  .nb-or { display: none; }
+}

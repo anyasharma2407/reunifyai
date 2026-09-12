@@ -284,6 +284,44 @@ residual 0.9 points, and it is documented rather than papered over.
 
 ---
 
+## Finding help nearby
+
+Everything else here is a caseworker's tool running on synthetic data. The
+"Find help near you" panel is the one feature an affected person might actually
+act on, and that changes what is acceptable in it.
+
+Two rules follow, and both are load-bearing:
+
+**The data is real or there is no data.** Showing someone a fictional shelter
+while they are looking for one is the worst thing this application could do.
+The synthetic corridor stays in the matching demo, where nobody is going to
+walk to it. If a lookup fails, the panel says so rather than falling back to
+something invented.
+
+**Places are labelled as what the map says they are.** OpenStreetMap knows
+about pharmacies, clinics and community centres; it does not know which of them
+is running a relief operation today. Calling a pharmacy a "rescue camp" because
+the surrounding page is about displacement would be a lie with consequences, so
+every result carries its own category and the provenance is stated where it
+cannot be missed.
+
+Results come from the Overpass API over OpenStreetMap: emergency shelters,
+assembly points, refugee sites, food banks, hospitals, clinics, doctors,
+pharmacies, social facilities, community centres, drinking water and police,
+within 6 km, ranked by how directly relevant the category is and then by
+distance.
+
+On location: coordinates are rounded to about 100 m before they are sent, the
+query goes to OpenStreetMap's public service and nowhere else, nothing is
+stored — the page has no server — and searching by place name is offered as an
+equal alternative. For someone who may be fleeing, not wanting to share GPS is
+a reasonable position, not an edge case.
+
+`?help=1` opens the panel; `?help=Manchester` opens it with that search already
+run.
+
+---
+
 ## Deploying
 
 It is live here, as a **static** Hugging Face Space:

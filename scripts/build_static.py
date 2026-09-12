@@ -67,7 +67,7 @@ def main() -> int:
     # --- frontend ---------------------------------------------------------
     (out / "static").mkdir(parents=True)
     for name in ("app.js", "demo.js", "style.css", "static-mode.js",
-                 "engine.js", "tryit.js"):
+                 "engine.js", "tryit.js", "nearby.js"):
         shutil.copy2(STATIC / name, out / "static" / name)
 
     html = (STATIC / "index.html").read_text()

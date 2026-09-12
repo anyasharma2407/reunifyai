@@ -1,0 +1,313 @@
+/*
+ * "Find help near you."
+ *
+ * Everything else in this project is a caseworker's tool running on synthetic
+ * data. This is the one feature an affected person might actually act on, and
+ * that changes what is acceptable.
+ *
+ * Two rules follow from it, and both are load-bearing:
+ *
+ *   1. The data is real or there is no data. Showing someone a fictional
+ *      shelter while they are looking for one is the worst thing this
+ *      application could do. The synthetic corridor stays in the matching
+ *      demo, where nobody is going to walk to it. If a lookup fails, this says
+ *      so rather than falling back to something invented.
+ *
+ *   2. Places are labelled as what the map says they are. OpenStreetMap knows
+ *      about pharmacies, clinics and community centres; it does not know which
+ *      of them is running a relief operation today. Calling a pharmacy a
+ *      "rescue camp" because the surrounding page is about displacement would
+ *      be a lie with consequences, so each result carries its own category and
+ *      the provenance is stated where it cannot be missed.
+ *
+ * Location handling: coordinates are rounded to about 100 m before they are
+ * sent, the query goes to OpenStreetMap's public Overpass service and nowhere
+ * else, nothing is stored, and searching by place name is offered as an equal
+ * alternative for anyone who does not want to share GPS at all -- which, for
+ * someone who may be fleeing, is a reasonable thing not to want.
+ */
+(function () {
+  "use strict";
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  const OVERPASS = "https://overpass-api.de/api/interpreter";
+  const NOMINATIM = "https://nominatim.openstreetmap.org/search";
+  const RADIUS_M = 6000;
+
+  // What each OSM tag actually means, in plain words. Nothing here is
+  // upgraded into a claim the map does not make.
+  const KINDS = {
+    refugee_site:     { label: "Refugee site",        rank: 0 },
+    shelter:          { label: "Shelter",             rank: 0 },
+    homeless_shelter: { label: "Shelter",             rank: 0 },
+    emergency_shelter:{ label: "Emergency shelter",   rank: 0 },
+    assembly_point:   { label: "Assembly point",      rank: 0 },
+    food_bank:        { label: "Food bank",           rank: 1 },
+    soup_kitchen:     { label: "Food distribution",   rank: 1 },
+    hospital:         { label: "Hospital",            rank: 1 },
+    clinic:           { label: "Clinic",              rank: 1 },
+    doctors:          { label: "Doctor",              rank: 2 },
+    pharmacy:         { label: "Pharmacy",            rank: 3 },
+    social_facility:  { label: "Social facility",     rank: 2 },
+    community_centre: { label: "Community centre",    rank: 2 },
+    drinking_water:   { label: "Drinking water",      rank: 2 },
+    toilets:          { label: "Toilets",             rank: 4 },
+    police:           { label: "Police",              rank: 3 },
+    fire_station:     { label: "Fire station",        rank: 3 },
+  };
+
+  const QUERY = (lat, lon) => `[out:json][timeout:30];
+(
+  nwr["amenity"~"^(hospital|clinic|doctors|pharmacy|police|fire_station|community_centre|drinking_water|toilets|social_facility)$"](around:${RADIUS_M},${lat},${lon});
+  nwr["amenity"="shelter"]["shelter_type"~"^(emergency_shelter|basic_hut)$"](around:${RADIUS_M},${lat},${lon});
+  nwr["emergency"="assembly_point"](around:${RADIUS_M},${lat},${lon});
+  nwr["social_facility"~"^(shelter|homeless_shelter|food_bank|soup_kitchen|refugee_site)$"](around:${RADIUS_M},${lat},${lon});
+);
+out center 220;`;
+
+  let panel = null;
+
+  function close() {
+    if (panel) panel.remove();
+    panel = null;
+    document.body.classList.remove("demo-open");
+  }
+
+  // --- geometry ---------------------------------------------------------
+
+  function distanceM(aLat, aLon, bLat, bLon) {
+    const R = 6371000, rad = Math.PI / 180;
+    const dLat = (bLat - aLat) * rad, dLon = (bLon - aLon) * rad;
+    const s = Math.sin(dLat / 2) ** 2 +
+      Math.cos(aLat * rad) * Math.cos(bLat * rad) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(s));
+  }
+
+  function bearing(aLat, aLon, bLat, bLon) {
+    const rad = Math.PI / 180;
+    const y = Math.sin((bLon - aLon) * rad) * Math.cos(bLat * rad);
+    const x = Math.cos(aLat * rad) * Math.sin(bLat * rad) -
+      Math.sin(aLat * rad) * Math.cos(bLat * rad) * Math.cos((bLon - aLon) * rad);
+    const deg = (Math.atan2(y, x) / rad + 360) % 360;
+    return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8];
+  }
+
+  const readable = (m) => m < 1000
+    ? Math.round(m / 10) * 10 + " m"
+    : (m / 1000).toFixed(m < 10000 ? 1 : 0) + " km";
+
+  // --- data -------------------------------------------------------------
+
+  function classify(tags) {
+    const keys = [tags.emergency, tags.social_facility, tags.shelter_type, tags.amenity];
+    for (const k of keys) if (k && KINDS[k]) return KINDS[k];
+    return null;
+  }
+
+  async function lookup(lat, lon) {
+    const res = await fetch(OVERPASS, {
+      method: "POST",
+      body: new URLSearchParams({ data: QUERY(lat, lon) }),
+    });
+    if (!res.ok) throw new Error("the map service did not respond (" + res.status + ")");
+    const data = await res.json();
+
+    const seen = new Set();
+    const out = [];
+    for (const el of data.elements || []) {
+      const t = el.tags || {};
+      const kind = classify(t);
+      if (!kind) continue;
+      const plat = el.lat ?? (el.center && el.center.lat);
+      const plon = el.lon ?? (el.center && el.center.lon);
+      if (plat == null || plon == null) continue;
+      const name = t.name || t["name:en"] || "";
+      const key = (name || "") + "|" + plat.toFixed(4) + "|" + plon.toFixed(4);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        name: name, kind: kind, lat: plat, lon: plon,
+        distance: distanceM(lat, lon, plat, plon),
+        dir: bearing(lat, lon, plat, plon),
+        hours: t.opening_hours || "",
+        phone: t.phone || t["contact:phone"] || "",
+        address: [t["addr:housenumber"], t["addr:street"]].filter(Boolean).join(" "),
+      });
+    }
+    out.sort((a, b) => (a.kind.rank - b.kind.rank) || (a.distance - b.distance));
+    return out;
+  }
+
+  async function geocode(place) {
+    const url = NOMINATIM + "?" + new URLSearchParams({
+      q: place, format: "json", limit: "1",
+    });
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error("place lookup failed (" + res.status + ")");
+    const hits = await res.json();
+    if (!hits.length) throw new Error("no place found matching “" + place + "”");
+    return { lat: Number(hits[0].lat), lon: Number(hits[0].lon), label: hits[0].display_name };
+  }
+
+  // --- rendering --------------------------------------------------------
+
+  function renderResults(list, originLabel) {
+    const host = panel.querySelector("#nb-results");
+    if (!list.length) {
+      host.innerHTML = `<div class="nb-empty">
+          <strong>Nothing found within ${RADIUS_M / 1000} km.</strong>
+          <p>That does not mean there is nothing there. It means the community
+             map has no record of it. Contact local emergency services or an
+             official relief line.</p>
+        </div>`;
+      return;
+    }
+    const LIMIT = 60;
+    const shown = list.slice(0, LIMIT);
+    const rows = shown.map((p) => `
+      <li class="nb-item">
+        <div class="nb-kind">${esc(p.kind.label)}</div>
+        <div class="nb-main">
+          <div class="nb-name">${esc(p.name || "Unnamed " + p.kind.label.toLowerCase())}</div>
+          ${p.address ? `<div class="nb-sub">${esc(p.address)}</div>` : ""}
+          ${p.hours ? `<div class="nb-sub">Hours: ${esc(p.hours)}</div>` : ""}
+          ${p.phone ? `<div class="nb-sub">☎ <a href="tel:${esc(p.phone)}">${esc(p.phone)}</a></div>` : ""}
+        </div>
+        <div class="nb-dist">
+          <span class="nb-km">${esc(readable(p.distance))}</span>
+          <span class="nb-dir">${esc(p.dir)}</span>
+          <a class="nb-map" target="_blank" rel="noopener"
+             href="https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=17/${p.lat}/${p.lon}">Map</a>
+        </div>
+      </li>`).join("");
+    host.innerHTML = `
+      <p class="nb-origin">${list.length > shown.length
+          ? "Nearest " + shown.length + " of " + list.length + " places"
+          : shown.length + " place" + (shown.length === 1 ? "" : "s")}
+         within ${RADIUS_M / 1000} km of ${esc(originLabel)}.</p>
+      <ul class="nb-list">${rows}</ul>`;
+  }
+
+  function setStatus(msg, isError) {
+    panel.querySelector("#nb-results").innerHTML =
+      `<p class="${isError ? "nb-error" : "demo-loading"}">${esc(msg)}</p>`;
+  }
+
+  async function runAt(lat, lon, label) {
+    setStatus("Searching the community map…", false);
+    try {
+      renderResults(await lookup(lat, lon), label);
+    } catch (err) {
+      setStatus("Could not search: " + err.message, true);
+    }
+  }
+
+  function useMyLocation() {
+    if (!navigator.geolocation) {
+      setStatus("This browser cannot provide a location. Search by place name instead.", true);
+      return;
+    }
+    setStatus("Waiting for your device to provide a location…", false);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        // Rounded to roughly 100 m before it is sent anywhere. A radius search
+        // does not need better, and precise coordinates are not this service's
+        // business.
+        const lat = Number(pos.coords.latitude.toFixed(3));
+        const lon = Number(pos.coords.longitude.toFixed(3));
+        runAt(lat, lon, "your approximate location");
+      },
+      (err) => setStatus(
+        err.code === err.PERMISSION_DENIED
+          ? "Location permission was declined. You can search by place name instead."
+          : "Could not get a location (" + err.message + "). Try searching by place name.",
+        true),
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 });
+  }
+
+  async function searchPlace() {
+    const q = panel.querySelector("#nb-place").value.trim();
+    if (!q) return;
+    setStatus("Looking up “" + q + "”…", false);
+    try {
+      const hit = await geocode(q);
+      await runAt(hit.lat, hit.lon, hit.label.split(",").slice(0, 2).join(","));
+    } catch (err) {
+      setStatus("Could not search: " + err.message, true);
+    }
+  }
+
+  function open() {
+    if (panel) return;
+    panel = document.createElement("div");
+    panel.className = "demo-overlay nb-overlay";
+    panel.innerHTML = `
+      <div class="demo-panel nb-panel">
+        <div class="demo-head">
+          <span class="demo-eyebrow">Find help near you</span>
+          <button class="demo-close" data-nb-close aria-label="Close">×</button>
+        </div>
+
+        <div class="nb-warning">
+          <strong>This is not an emergency service.</strong>
+          If you are in immediate danger, contact your local emergency number.
+          The places below come from OpenStreetMap, a public map anyone can
+          edit. They are <strong>not verified</strong>, may be out of date, and
+          are listed as whatever the map records them to be — a pharmacy is a
+          pharmacy, not a relief centre. Always confirm before travelling.
+        </div>
+
+        <p class="nb-privacy">
+          Your location is used to search and nothing else. It is rounded to
+          about 100&nbsp;m, sent only to OpenStreetMap's public search service,
+          and never stored or sent to us — this page has no server. If you would
+          rather not share it, search by place name instead.
+        </p>
+
+        <div class="nb-actions">
+          <button class="btn btn-primary" id="nb-locate" type="button">Use my location</button>
+          <span class="nb-or">or</span>
+          <input id="nb-place" type="search" placeholder="town, city or area…"
+                 aria-label="Search by place name">
+          <button class="btn" id="nb-search" type="button">Search</button>
+        </div>
+
+        <div id="nb-results"></div>
+
+        <p class="nb-credit">
+          Data © OpenStreetMap contributors, via the Overpass API. Unverified
+          community data. This page holds no records and stores nothing.
+        </p>
+      </div>`;
+    panel.addEventListener("click", (e) => {
+      if (e.target === panel || e.target.closest("[data-nb-close]")) close();
+    });
+    panel.querySelector("#nb-locate").addEventListener("click", useMyLocation);
+    panel.querySelector("#nb-search").addEventListener("click", searchPlace);
+    panel.querySelector("#nb-place").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") searchPlace();
+    });
+    document.body.appendChild(panel);
+    document.body.classList.add("demo-open");
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && panel) close();
+  });
+
+  const btn = document.getElementById("find-help");
+  if (btn) btn.addEventListener("click", open);
+
+  const wanted = new URLSearchParams(location.search).get("help");
+  if (wanted) {
+    window.addEventListener("load", () => {
+      open();
+      if (wanted !== "1") {
+        panel.querySelector("#nb-place").value = wanted;
+        searchPlace();
+      }
+    });
+  }
+})();
