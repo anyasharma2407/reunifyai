@@ -1,0 +1,647 @@
+{
+  "name": "ReunifyAI — Cross-Registry Potential Match Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reunify/compare",
+        "responseMode": "responseNode"
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        208
+      ],
+      "name": "01 — Receive NGO Records"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        208
+      ],
+      "name": "Input usable?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 400,
+        "responseBody": "={{ JSON.stringify({ error: \"invalid request\", problems: $json.problems }) }}"
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        304
+      ],
+      "name": "Reject Malformed Request"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-5"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.6,
+      "position": [
+        976,
+        336
+      ],
+      "name": "Claude"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-5"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.6,
+      "position": [
+        2896,
+        336
+      ],
+      "name": "Claude (explanation)"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Two humanitarian registries each hold a free-text intake note. Pull out only what is explicitly stated. Never infer, never fill gaps.\n\nReturn strict JSON: {\"a\":{\"places\":[],\"relations\":[],\"dates\":[]},\"b\":{\"places\":[],\"relations\":[],\"dates\":[]}}\n\nNote A: {{ $json.a.notes }}\nNote B: {{ $json.b.notes }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        896,
+        112
+      ],
+      "name": "04 — AI Entity Extraction",
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.options.face_service_url || \"http://localhost:8000/api/face/embed\" }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ images: [$json.a.face_image_url, $json.b.face_image_url] }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1472,
+        176
+      ],
+      "name": "06 — Generate Face Embeddings",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll"
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1696,
+        112
+      ],
+      "name": "Collect Face Vectors"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are writing one short paragraph for a humanitarian caseworker explaining why two records were put in front of them.\n\nRules you must follow:\n- Never state or imply the records are the same person.\n- Say plainly that facial similarity alone does not establish identity or a family relationship.\n- Describe only the signals below. Do not invent evidence.\n- End by stating that human verification is required.\n\nPotential match score: {{ $json.potential_match_score }} ({{ $json.band }})\nEvidence coverage: {{ $json.evidence_coverage }}\nSignals: {{ JSON.stringify($json.signals) }}\nFlags: {{ JSON.stringify($json.flags) }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        2816,
+        112
+      ],
+      "name": "11 — Generate Explanation",
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "above-threshold",
+              "leftValue": "={{ $json.potential_match_score }}",
+              "rightValue": "={{ $json.options.review_threshold || 60 }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        3392,
+        112
+      ],
+      "name": "12 — Filter Priority Matches"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 202,
+        "responseBody": "={{ JSON.stringify({ case_id: $json.review_case.case_id, potential_match_score: $json.potential_match_score, band: $json.band, face_similarity: $json.review_case.face_similarity, status: \"awaiting_human_review\", notice: $json.notice, face_notice: $json.face_notice, review_notice: $json.review_notice }) }}"
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3840,
+        112
+      ],
+      "name": "Respond to Calling System"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.options.caseworker_webhook_url || \"https://example.invalid/caseworker\" }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: \"Potential match for review: \" + $json.review_case.case_id + \" (\" + $json.potential_match_score + \"/100). HUMAN VERIFICATION REQUIRED.\", review_case: $json.review_case }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        4064,
+        112
+      ],
+      "name": "14 — Notify Caseworker",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "httpMethod": "POST",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4288,
+        112
+      ],
+      "name": "15 — Wait for Human Review"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Reject anything malformed at the door. A tracing pipeline that\n// silently scores half a record is worse than one that refuses it.\nconst body = $input.first().json.body || $input.first().json;\nconst a = body.record_a;\nconst b = body.record_b;\nconst problems = [];\nif (!a) problems.push(\"record_a missing\");\nif (!b) problems.push(\"record_b missing\");\nif (a && !a.record_id) problems.push(\"record_a.record_id missing\");\nif (b && !b.record_id) problems.push(\"record_b.record_id missing\");\nif (problems.length) {\n  return [{ json: { ok: false, problems: problems, received: body } }];\n}\nreturn [{ json: {\n  ok: true,\n  record_a: a,\n  record_b: b,\n  options: body.options || {},\n  received_at: new Date().toISOString(),\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        208
+      ],
+      "name": "02 — Validate Input"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Put both registries on the same footing before anything is compared.\n// Registries disagree about case, punctuation, whitespace and date\n// format, and none of that is evidence about a person.\nconst p = $input.first().json;\nconst clean = (s) => String(s == null ? \"\" : s).normalize(\"NFKD\")\n  .replace(/[\\u0300-\\u036f]/g, \"\").replace(/\\s+/g, \" \").trim();\nconst key = (s) => clean(s).toLowerCase().replace(/[^a-z0-9 ]/g, \"\");\n\n// Dates arrive as ISO, d/m/y, \"March 8, 1994\", \"April 1988\", \"approx. 1994\"\n// or \"age approx 32\". Each is turned into an interval plus a statement of how\n// precisely it was recorded, because most registry dates are not points.\n//\n// Precision is tracked separately from the interval, and it is what decides\n// how much the date is allowed to count later: two exact dates that agree is\n// far stronger evidence than two \"approx. 1994\"s that agree, even though both\n// overlap perfectly. Collapsing that distinction lets a vague date carry the\n// weight of a certain one.\nconst MONTHS = {\n  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7,\n  august: 8, september: 9, october: 10, november: 11, december: 12,\n  jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10,\n  nov: 11, dec: 12,\n};\nconst utc = (y, m, d) => Date.UTC(y, m - 1, d);\nconst lastDay = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();\n\nconst parseDate = (raw) => {\n  const s = clean(raw);\n  if (!s) return null;\n  const yearWindow = (y, slack, precision) => ({\n    lo: utc(y - slack, 1, 1), hi: utc(y + slack, 12, 31), precision: precision,\n  });\n\n  let m = s.match(/^(?:approx\\.?|c\\.?|circa|ca\\.?)\\s*(\\d{4})$/i);\n  if (m) return yearWindow(Number(m[1]), 1, \"approx-year\");\n\n  m = s.match(/^age\\s*(?:approx\\.?)?\\s*(\\d{1,3})$/i);\n  if (m) return yearWindow(new Date().getUTCFullYear() - Number(m[1]), 1, \"approx-year\");\n\n  m = s.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})$/);\n  if (m) {\n    const d = utc(Number(m[1]), Number(m[2]), Number(m[3]));\n    return { lo: d, hi: d, precision: \"day\" };\n  }\n\n  // 08/02/1994 could be D/M or M/D. When both halves are <= 12 the ordering is\n  // unrecoverable, so the window widens to cover both readings rather than\n  // guessing and inventing precision the record does not have.\n  m = s.match(/^(\\d{1,2})[\\/.\\-](\\d{1,2})[\\/.\\-](\\d{4})$/);\n  if (m) {\n    const pp = Number(m[1]), q = Number(m[2]), y = Number(m[3]);\n    const cand = [];\n    if (q >= 1 && q <= 12 && pp >= 1 && pp <= lastDay(y, q)) cand.push(utc(y, q, pp));\n    if (pp >= 1 && pp <= 12 && q >= 1 && q <= lastDay(y, pp)) cand.push(utc(y, pp, q));\n    if (!cand.length) return yearWindow(y, 0, \"year\");\n    if (cand.length === 1) return { lo: cand[0], hi: cand[0], precision: \"day\" };\n    return { lo: Math.min(cand[0], cand[1]), hi: Math.max(cand[0], cand[1]),\n             precision: \"month\" };\n  }\n\n  m = s.match(/^([A-Za-z]+)\\s+(\\d{1,2}),\\s*(\\d{4})$/);\n  if (m && MONTHS[m[1].toLowerCase()]) {\n    const d = utc(Number(m[3]), MONTHS[m[1].toLowerCase()], Number(m[2]));\n    return { lo: d, hi: d, precision: \"day\" };\n  }\n\n  m = s.match(/^([A-Za-z]+)\\s+(\\d{4})$/);\n  if (m && MONTHS[m[1].toLowerCase()]) {\n    const mo = MONTHS[m[1].toLowerCase()], y = Number(m[2]);\n    return { lo: utc(y, mo, 1), hi: utc(y, mo, lastDay(y, mo)), precision: \"month\" };\n  }\n\n  m = s.match(/^(\\d{4})$/);\n  if (m) return yearWindow(Number(m[1]), 0, \"year\");\n\n  return null;\n};\n\nconst shape = (r) => ({\n  record_id: r.record_id,\n  registry: r.registry || null,\n  given_name: clean(r.given_name),\n  family_name: clean(r.family_name),\n  given_key: key(r.given_name),\n  family_key: key(r.family_name),\n  sex: clean(r.sex).toUpperCase().slice(0, 1),\n  birth_raw: clean(r.birth_date_raw),\n  birth: parseDate(r.birth_date_raw),\n  origin_place: clean(r.origin_place),\n  origin_key: key(r.origin_place),\n  last_seen_place: clean(r.last_seen_place),\n  last_seen_key: key(r.last_seen_place),\n  nationality: clean(r.nationality),\n  nationality_key: key(r.nationality),\n  family_members: (r.family_members || []).map((m) => ({\n    name: clean(m.name), name_key: key(m.name),\n    relation: key(m.relation),\n  })),\n  notes: clean(r.notes),\n  face_embedding: r.face_embedding || null,\n  face_image_url: r.face_image_url || null,\n});\n\nreturn [{ json: Object.assign({}, p, {\n  a: shape(p.record_a), b: shape(p.record_b),\n}) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        112
+      ],
+      "name": "03 — Normalize Records"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Decide how the two faces will be compared, if at all.\n//\n// The preferred path is that each organisation sends the embedding it\n// computed locally and keeps the photograph. Two agencies can then ask\n// \"do we hold records for the same person?\" without either of them\n// transmitting a picture of a displaced person. An embedding is still\n// biometric data and still needs protecting, but it narrows what has to\n// cross an organisational boundary to run the comparison.\n//\n// The node upstream is an LLM chain, and a chain returns the model's reply\n// rather than the item it was given — so the normalised records have to be\n// pulled back from stage 03 by name. Reading $input here instead gets the\n// model's text and nothing else.\nconst p = $('03 — Normalize Records').first().json;\nconst llm = $input.first().json;\nconst extraction = llm.text || llm.output || llm.response || null;\nconst haveBoth = !!(p.a.face_embedding && p.b.face_embedding);\nconst haveUrls = !!(p.a.face_image_url && p.b.face_image_url);\nreturn [{ json: Object.assign({}, p, {\n  ai_extraction: extraction,\n  face_plan: {\n    mode: haveBoth ? \"embeddings-supplied\" : (haveUrls ? \"embed-remotely\" : \"unavailable\"),\n    needs_embedding: !haveBoth && haveUrls,\n    reason: haveBoth\n      ? \"Both registries supplied embeddings; no image is transmitted.\"\n      : (haveUrls\n          ? \"Only image references supplied; the embedding service must be called.\"\n          : \"No face data from at least one registry — the face signal will abstain.\"),\n  },\n}) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        112
+      ],
+      "name": "05 — Prepare Face Images"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Cosine distance between two face embeddings, then calibration.\n//\n// Raw cosine is not a percentage anyone should read. Two unrelated\n// faces still agree substantially, because both are faces: in this\n// corpus strangers sit around 0.81, not near zero. Reporting that as\n// \"81% similar\" would badly mislead a caseworker. So the score says how\n// far above the stranger baseline this pair sits, not how alike the two\n// vectors are in the abstract.\n// Same reasoning as stage 05: read the payload from the stage that produced\n// it rather than from whatever the merge happened to hand over.\nconst p = $('05 — Prepare Face Images').first().json;\n\n// Vectors either came in the request or came back from the embedding service,\n// which the merge folds into the incoming item.\nconst items = $input.all();\nlet svc = null;\nfor (let i = 0; i < items.length; i++) {\n  if (items[i].json && items[i].json.embeddings) svc = items[i].json;\n}\nconst va = p.a.face_embedding || (svc && svc.embeddings ? svc.embeddings[0] : null);\nconst vb = p.b.face_embedding || (svc && svc.embeddings ? svc.embeddings[1] : null);\n\nconst cal = p.options.face_calibration || { background_mean: 0.814, background_sd: 0.068 };\nconst MID = 0.72;\nconst SPREAD = 0.295;\n\nif (!Array.isArray(va) || !Array.isArray(vb) || va.length !== vb.length || !va.length) {\n  return [{ json: Object.assign({}, p, { face: {\n    available: false, score: 0, weight: 0,\n    detail: \"No comparable face embedding — excluded from scoring.\",\n  } }) }];\n}\n\nlet dot = 0, na = 0, nb = 0;\nfor (let i = 0; i < va.length; i++) {\n  dot += va[i] * vb[i]; na += va[i] * va[i]; nb += vb[i] * vb[i];\n}\nconst cos = (na && nb) ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;\nconst z = (cos - cal.background_mean) / Math.max(cal.background_sd, 1e-6);\nconst score = 100 / (1 + Math.exp(-(z - MID) / SPREAD));\n\n// Asymmetric on purpose. Two photographs looking alike is real\n// corroboration; looking unalike is weak evidence of anything, because\n// the innocent explanations are ordinary — years between captures,\n// injury, a covered head, a camera that could not expose for a dark\n// face. Facial similarity is an indicator and not proof of identity;\n// the corollary is that dissimilarity is not proof of non-identity.\nconst weight = score >= 55 ? 1 : 0.25 + 0.75 * (score / 55);\n\nreturn [{ json: Object.assign({}, p, { face: {\n  available: true,\n  score: Math.round(score * 10) / 10,\n  weight: Math.round(weight * 100) / 100,\n  cosine: Math.round(cos * 10000) / 10000,\n  z_above_background: Math.round(z * 100) / 100,\n  dimensions: va.length,\n  detail: \"Cosine distance over \" + va.length + \"-d embeddings; \" +\n          (Math.round(z * 100) / 100) + \" SD above unrelated faces. \" +\n          \"Indicator only — not proof of identity.\",\n} }) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        112
+      ],
+      "name": "07 — Calculate Facial Similarity"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Transliteration and OCR damage names in different ways, so edit\n// distance alone is not enough: it scores Mohammed/Muhammad at about\n// 0.85, indistinguishable from noise. A phonetic code recognises them\n// as the same name. The scorer takes the more generous of the two and\n// records which one fired, so a reviewer sees the reasoning.\nconst p = $input.first().json;\n\nconst jaro = (s1, s2) => {\n  if (!s1.length || !s2.length) return 0;\n  if (s1 === s2) return 1;\n  const win = Math.max(0, Math.floor(Math.max(s1.length, s2.length) / 2) - 1);\n  const f1 = new Array(s1.length).fill(false);\n  const f2 = new Array(s2.length).fill(false);\n  let m = 0;\n  for (let i = 0; i < s1.length; i++) {\n    const lo = Math.max(0, i - win), hi = Math.min(i + win + 1, s2.length);\n    for (let j = lo; j < hi; j++) {\n      if (f2[j] || s1[i] !== s2[j]) continue;\n      f1[i] = true; f2[j] = true; m++; break;\n    }\n  }\n  if (!m) return 0;\n  let k = 0, t = 0;\n  for (let i = 0; i < s1.length; i++) {\n    if (!f1[i]) continue;\n    while (!f2[k]) k++;\n    if (s1[i] !== s2[k]) t++;\n    k++;\n  }\n  t = t / 2;\n  return (m / s1.length + m / s2.length + (m - t) / m) / 3;\n};\n\nconst jaroWinkler = (a, b) => {\n  const j = jaro(a, b);\n  let pre = 0;\n  while (pre < 4 && pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;\n  return j + pre * 0.1 * (1 - j);\n};\n\n// Metaphone, matching the reference scorer's coder on 200 of the 201 distinct\n// names in this corpus. Phonetic coding is what recognises Mohammed, Muhammad\n// and Mohamed as one name: edit distance scores them around 0.85, which is\n// indistinguishable from noise, while all three encode to MHMT.\nconst metaphone = (word) => {\n  let w = String(word || \"\").toUpperCase().replace(/[^A-Z]/g, \"\");\n  if (!w) return \"\";\n  w = w.replace(/([^C])\\1+/g, \"$1\");\n  if (/^(AE|GN|KN|PN|WR)/.test(w)) w = w.slice(1);\n  else if (w[0] === \"X\") w = \"S\" + w.slice(1);\n  else if (/^WH/.test(w)) w = \"W\" + w.slice(2);\n  const isV = (c) => !!c && \"AEIOU\".indexOf(c) >= 0;\n  let out = \"\";\n  for (let i = 0; i < w.length; i++) {\n    const c = w[i], prev = w[i - 1], next = w[i + 1], after = w[i + 2];\n    if (c === prev && c !== \"C\") continue;\n    if (isV(c)) { if (i === 0) out += c; continue; }\n    if (c === \"B\") { if (!(i === w.length - 1 && prev === \"M\")) out += \"B\"; }\n    else if (c === \"C\") {\n      if (next === \"I\" && after === \"A\") out += \"X\";\n      else if (next === \"H\") out += \"X\";\n      else if (\"IEY\".indexOf(next) >= 0) { if (prev !== \"S\") out += \"S\"; }\n      else out += \"K\";\n    }\n    else if (c === \"D\") { if (next === \"G\" && \"EYI\".indexOf(after) >= 0) { out += \"J\"; i++; } else out += \"T\"; }\n    else if (c === \"G\") {\n      if (next === \"H\") { if (i + 1 === w.length - 1 || isV(after)) out += \"K\"; }\n      else if (next === \"N\") { /* silent */ }\n      else if (\"IEY\".indexOf(next) >= 0) out += \"J\";\n      else out += \"K\";\n    }\n    else if (c === \"H\") { if (!(isV(prev) && !isV(next)) && \"CSPT\".indexOf(prev) < 0) out += \"H\"; }\n    else if (c === \"K\") { if (prev !== \"C\") out += \"K\"; }\n    else if (c === \"P\") out += (next === \"H\") ? \"F\" : \"P\";\n    else if (c === \"Q\") out += \"K\";\n    else if (c === \"S\") out += (next === \"H\" || (next === \"I\" && \"OA\".indexOf(after) >= 0)) ? \"X\" : \"S\";\n    else if (c === \"T\") {\n      if (next === \"I\" && \"OA\".indexOf(after) >= 0) out += \"X\";\n      else if (next === \"H\") out += \"0\";\n      else if (!(next === \"C\" && after === \"H\")) out += \"T\";\n    }\n    else if (c === \"V\") out += \"F\";\n    else if (c === \"W\" || c === \"Y\") { if (isV(next)) out += c; }\n    else if (c === \"X\") out += \"KS\";\n    else if (c === \"Z\") out += \"S\";\n    else out += c;\n  }\n  return out;\n};\nconst phonetic = metaphone;\n\n// RapidFuzz's ratio, which the reference scorer uses: Indel similarity, not\n// classic Levenshtein. It counts only insertions and deletions, so it is\n// 2*LCS/(len1+len2). Substitution-based edit distance gives visibly different\n// numbers on the same two names, which is enough to make the two\n// implementations disagree about a score.\nconst indelRatio = (x, y) => {\n  if (!x || !y) return 0;\n  if (x === y) return 100;\n  const m = x.length, n = y.length;\n  let prev = new Array(n + 1).fill(0);\n  for (let i = 1; i <= m; i++) {\n    const cur = new Array(n + 1).fill(0);\n    for (let j = 1; j <= n; j++) {\n      cur[j] = x[i - 1] === y[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);\n    }\n    prev = cur;\n  }\n  return (2 * prev[n]) / (m + n) * 100;\n};\n\nconst part = (x, y) => {\n  if (!x || !y) return { score: 0, why: \"missing\" };\n  if (x === y) return { score: 100, why: \"identical\" };\n  // Jaro-Winkler rewards a shared prefix, which is what survives most\n  // transliteration; plain edit distance is the better judge of the tail. The\n  // reference scorer weights them 60/40 and this must match it, or the two\n  // implementations report different numbers for the same two names.\n  const edit = 0.6 * (jaroWinkler(x, y) * 100) + 0.4 * indelRatio(x, y);\n  const px = phonetic(x), py = phonetic(y);\n  if (px && px === py && edit < 90) {\n    return { score: 90, why: \"phonetic codes match (\" + px.toUpperCase() + \")\" };\n  }\n  return { score: edit, why: \"spelling similarity \" + Math.round(edit) + \"%\" };\n};\n\nconst a = p.a, b = p.b;\nconst hasA = !!(a.given_key || a.family_key);\nconst hasB = !!(b.given_key || b.family_key);\nif (!hasA || !hasB) {\n  return [{ json: Object.assign({}, p, { name: {\n    available: false, score: 0, weight: 0,\n    detail: \"No name recorded by at least one registry — excluded from scoring.\",\n  } }) }];\n}\n\nconst g = part(a.given_key, b.given_key);\nconst f = part(a.family_key, b.family_key);\nconst straight = 0.5 * g.score + 0.5 * f.score;\n\n// The same two names typed into the wrong boxes at intake.\nconst sg = part(a.given_key, b.family_key);\nconst sf = part(a.family_key, b.given_key);\nconst swapped = 0.5 * sg.score + 0.5 * sf.score;\n\nconst isSwap = swapped > straight + 12 && swapped >= 65;\nconst score = isSwap ? swapped * 0.96 : straight;\nconst detail = isSwap\n  ? \"Name order appears swapped between registries — given vs family: \" + sg.why\n  : \"Given name — \" + g.why + \". Family name — \" + f.why;\n\nreturn [{ json: Object.assign({}, p, { name: {\n  available: true,\n  score: Math.round(score * 10) / 10,\n  weight: (a.given_key && a.family_key && b.given_key && b.family_key) ? 1 : 0.6,\n  swapped: isSwap,\n  detail: detail,\n} }) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2144,
+        112
+      ],
+      "name": "08 — Calculate Name Similarity"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Family, location, age and nationality.\n//\n// Every one of these abstains when a registry did not record it. A\n// missing field must dilute the evidence, never argue against a match:\n// scoring an absent birth date as zero would push apart two records\n// that agree on everything anyone actually wrote down.\nconst p = $input.first().json;\nconst a = p.a, b = p.b;\n\n// The gazetteer of place names this matcher is allowed to treat as known\n// equivalents. It is deliberately partial -- a real gazetteer never covers\n// every alias a field office invents -- so fuzzy and phonetic matching still\n// have to carry the aliases it was never told about.\n//\nconst PLACE_ALIASES = {\n  \"qasr nadeem\": \"pl01\", \"kasr nadim\": \"pl01\",\n  \"bel haran\": \"pl02\", \"belharan\": \"pl02\",\n  \"tal mireh\": \"pl03\", \"tell mira\": \"pl03\",\n  \"zahiryah\": \"pl04\", \"zahiriya\": \"pl04\",\n  \"sevrin\": \"pl06\", \"severin\": \"pl06\",\n  \"novi krag\": \"pl07\", \"novy krag\": \"pl07\",\n  \"hulwan reach\": \"pl09\", \"hulwan\": \"pl09\",\n  \"camp thirteen\": \"pl13\", \"camp 13\": \"pl13\",\n  \"ilvar transit site\": \"pl14\", \"ilvar transit centre\": \"pl14\",\n  \"vantoral reception point\": \"pl16\", \"vantoral reception\": \"pl16\",\n};\nconst NAT_ALIASES = {\n  \"karavian\": \"nt01\", \"karavien\": \"nt01\",\n  \"ardavoni\": \"nt02\", \"ardavonian\": \"nt02\",\n  \"meretheen\": \"nt03\", \"merethene\": \"nt03\",\n  \"hulwani\": \"nt05\", \"hulwanese\": \"nt05\",\n};\n\n// Jaro-Winkler and Metaphone, the same pair stage 08 uses on names. Place\n// names are damaged by the same transliteration habits as people's names, so\n// they deserve the same treatment. The sandbox cannot import, so these are\n// duplicated rather than shared -- scripts/check_parity.py keeps the copies\n// honest.\nconst jaro = (s1, s2) => {\n  if (!s1.length || !s2.length) return 0;\n  if (s1 === s2) return 1;\n  const win = Math.max(0, Math.floor(Math.max(s1.length, s2.length) / 2) - 1);\n  const f1 = new Array(s1.length).fill(false);\n  const f2 = new Array(s2.length).fill(false);\n  let m = 0;\n  for (let i = 0; i < s1.length; i++) {\n    const lo = Math.max(0, i - win), hi = Math.min(i + win + 1, s2.length);\n    for (let j = lo; j < hi; j++) {\n      if (f2[j] || s1[i] !== s2[j]) continue;\n      f1[i] = true; f2[j] = true; m++; break;\n    }\n  }\n  if (!m) return 0;\n  let k = 0, t = 0;\n  for (let i = 0; i < s1.length; i++) {\n    if (!f1[i]) continue;\n    while (!f2[k]) k++;\n    if (s1[i] !== s2[k]) t++;\n    k++;\n  }\n  return (m / s1.length + m / s2.length + (m - t / 2) / m) / 3;\n};\nconst jaroWinkler = (x, y) => {\n  const j = jaro(x, y);\n  let pre = 0;\n  while (pre < 4 && pre < x.length && pre < y.length && x[pre] === y[pre]) pre++;\n  return j + pre * 0.1 * (1 - j);\n};\n// Metaphone, matching the reference scorer's coder on 200 of the 201 distinct\n// names in this corpus. Phonetic coding is what recognises Mohammed, Muhammad\n// and Mohamed as one name: edit distance scores them around 0.85, which is\n// indistinguishable from noise, while all three encode to MHMT.\nconst metaphone = (word) => {\n  let w = String(word || \"\").toUpperCase().replace(/[^A-Z]/g, \"\");\n  if (!w) return \"\";\n  w = w.replace(/([^C])\\1+/g, \"$1\");\n  if (/^(AE|GN|KN|PN|WR)/.test(w)) w = w.slice(1);\n  else if (w[0] === \"X\") w = \"S\" + w.slice(1);\n  else if (/^WH/.test(w)) w = \"W\" + w.slice(2);\n  const isV = (c) => !!c && \"AEIOU\".indexOf(c) >= 0;\n  let out = \"\";\n  for (let i = 0; i < w.length; i++) {\n    const c = w[i], prev = w[i - 1], next = w[i + 1], after = w[i + 2];\n    if (c === prev && c !== \"C\") continue;\n    if (isV(c)) { if (i === 0) out += c; continue; }\n    if (c === \"B\") { if (!(i === w.length - 1 && prev === \"M\")) out += \"B\"; }\n    else if (c === \"C\") {\n      if (next === \"I\" && after === \"A\") out += \"X\";\n      else if (next === \"H\") out += \"X\";\n      else if (\"IEY\".indexOf(next) >= 0) { if (prev !== \"S\") out += \"S\"; }\n      else out += \"K\";\n    }\n    else if (c === \"D\") { if (next === \"G\" && \"EYI\".indexOf(after) >= 0) { out += \"J\"; i++; } else out += \"T\"; }\n    else if (c === \"G\") {\n      if (next === \"H\") { if (i + 1 === w.length - 1 || isV(after)) out += \"K\"; }\n      else if (next === \"N\") { /* silent */ }\n      else if (\"IEY\".indexOf(next) >= 0) out += \"J\";\n      else out += \"K\";\n    }\n    else if (c === \"H\") { if (!(isV(prev) && !isV(next)) && \"CSPT\".indexOf(prev) < 0) out += \"H\"; }\n    else if (c === \"K\") { if (prev !== \"C\") out += \"K\"; }\n    else if (c === \"P\") out += (next === \"H\") ? \"F\" : \"P\";\n    else if (c === \"Q\") out += \"K\";\n    else if (c === \"S\") out += (next === \"H\" || (next === \"I\" && \"OA\".indexOf(after) >= 0)) ? \"X\" : \"S\";\n    else if (c === \"T\") {\n      if (next === \"I\" && \"OA\".indexOf(after) >= 0) out += \"X\";\n      else if (next === \"H\") out += \"0\";\n      else if (!(next === \"C\" && after === \"H\")) out += \"T\";\n    }\n    else if (c === \"V\") out += \"F\";\n    else if (c === \"W\" || c === \"Y\") { if (isV(next)) out += c; }\n    else if (c === \"X\") out += \"KS\";\n    else if (c === \"Z\") out += \"S\";\n    else out += c;\n  }\n  return out;\n};\nconst phonetic = metaphone;\n\n// Token-set comparison: two desks may write the same place with its words in a\n// different order, or with one of them dropped.\nconst tokenSet = (x, y) => {\n  const tx = x.split(\" \").filter(Boolean).sort().join(\" \");\n  const ty = y.split(\" \").filter(Boolean).sort().join(\" \");\n  return ratio(tx, ty);\n};\n\n// RapidFuzz's ratio, which the reference scorer uses: Indel similarity, not\n// classic Levenshtein. It counts only insertions and deletions, so it is\n// 2*LCS/(len1+len2). Substitution-based edit distance gives visibly different\n// numbers on the same two names, which is enough to make the two\n// implementations disagree about a score.\nconst indelRatio = (x, y) => {\n  if (!x || !y) return 0;\n  if (x === y) return 100;\n  const m = x.length, n = y.length;\n  let prev = new Array(n + 1).fill(0);\n  for (let i = 1; i <= m; i++) {\n    const cur = new Array(n + 1).fill(0);\n    for (let j = 1; j <= n; j++) {\n      cur[j] = x[i - 1] === y[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);\n    }\n    prev = cur;\n  }\n  return (2 * prev[n]) / (m + n) * 100;\n};\n\n// The reference scorer compares family-member names with the same routine it\n// uses for the person's own name, so this mirrors stage 08 rather than falling\n// back to raw string distance. A relative's name is corroboration precisely\n// because it is damaged independently of the main name, and it deserves the\n// same phonetic treatment.\nconst nameScore = (x, y) => {\n  if (!x || !y) return 0;\n  if (x === y) return 100;\n  const edit = 0.6 * (jaroWinkler(x, y) * 100) + 0.4 * indelRatio(x, y);\n  const px = metaphone(x), py = metaphone(y);\n  return (px && px === py && edit < 90) ? 90 : edit;\n};\n\nconst ratio = indelRatio;\n\nconst place = (x, y) => {\n  if (!x || !y) {\n    return { available: false, score: 0, weight: 0, detail: \"Not recorded — excluded.\" };\n  }\n  if (x === y) {\n    return { available: true, score: 100, weight: 1, detail: \"Identical entry\" };\n  }\n  const cx = PLACE_ALIASES[x], cy = PLACE_ALIASES[y];\n  if (cx && cx === cy) {\n    return { available: true, score: 97, weight: 1,\n             detail: x + \" ≈ \" + y + \" — known alias in the place-name gazetteer\" };\n  }\n  let score = Math.max(tokenSet(x, y), jaroWinkler(x, y) * 100);\n  let detail = \"Fuzzy similarity \" + Math.round(score) + \"% — not a known alias\";\n  const px = phonetic(x.replace(/ /g, \"\")), py = phonetic(y.replace(/ /g, \"\"));\n  if (px && px === py && score < 90) {\n    score = 90;\n    detail = x + \" ≈ \" + y + \" — phonetic codes match (\" + px.toUpperCase() +\n             \"), unlisted alias or spelling drift\";\n  }\n  // Place names are noisier evidence than names or dates; a middling score\n  // between two genuinely different towns should not move the needle much.\n  return { available: true, score: score, weight: score >= 80 ? 1 : 0.7, detail: detail };\n};\n\nconst origin = place(a.origin_key, b.origin_key);\nconst lastSeen = place(a.last_seen_key, b.last_seen_key);\n\n// Age: overlapping tolerance windows agree, and the evidence is only ever as\n// strong as the vaguer of the two records. Two precise dates that disagree is\n// real counter-evidence; two vague ones a year apart is routine registry drift,\n// so they decay at very different rates.\nconst PRECISION_WEIGHT = { day: 1.0, month: 0.85, year: 0.70, \"approx-year\": 0.58 };\nconst DAY_MS = 86400000;\nlet age;\nif (!a.birth || !b.birth) {\n  age = { available: false, score: 0, weight: 0, detail: \"Not recorded — excluded.\" };\n} else {\n  const w = Math.min(PRECISION_WEIGHT[a.birth.precision] || 0.58,\n                     PRECISION_WEIGHT[b.birth.precision] || 0.58);\n  const tight = a.birth.precision === \"day\" && b.birth.precision === \"day\";\n  const overlap = !(a.birth.hi < b.birth.lo || b.birth.hi < a.birth.lo);\n  if (overlap) {\n    age = { available: true, score: 100, weight: w,\n            detail: tight ? \"Exact dates agree\"\n                          : \"Tolerance windows overlap (\" + a.birth.precision +\n                            \" vs \" + b.birth.precision + \" precision)\" };\n  } else {\n    const midA = (a.birth.lo + a.birth.hi) / 2;\n    const midB = (b.birth.lo + b.birth.hi) / 2;\n    const gap = Math.abs(midA - midB) / DAY_MS;\n    const halfLife = tight ? 120 : 400;\n    const years = gap / 365.25;\n    age = { available: true, score: 100 * Math.pow(0.5, gap / halfLife), weight: w,\n            detail: \"Windows do not overlap — about \" + years.toFixed(1) + \" year(s) apart\" };\n  }\n}\n\n// Nationality is the weakest signal and the most dangerous to lean on:\n// at a registration desk it is often the enumerator's inference rather\n// than a document. Agreement is mild corroboration; disagreement is not\n// treated as counter-evidence at all.\nlet nat;\nconst undetermined = [\"stateless\", \"undetermined\", \"not established\"];\nif (!a.nationality_key || !b.nationality_key ||\n    undetermined.indexOf(a.nationality_key) >= 0 ||\n    undetermined.indexOf(b.nationality_key) >= 0) {\n  nat = { available: false, score: 0, weight: 0,\n          detail: \"Not recorded or undetermined — excluded.\" };\n} else if (a.nationality_key === b.nationality_key) {\n  nat = { available: true, score: 100, weight: 1, detail: \"Identical entry\" };\n} else if (NAT_ALIASES[a.nationality_key] &&\n           NAT_ALIASES[a.nationality_key] === NAT_ALIASES[b.nationality_key]) {\n  nat = { available: true, score: 97, weight: 1,\n          detail: a.nationality + \" ≈ \" + b.nationality + \" — known equivalent\" };\n} else {\n  const r = Math.max(indelRatio(a.nationality_key, b.nationality_key),\n                     jaroWinkler(a.nationality_key, b.nationality_key) * 100);\n  nat = r < 70\n    ? { available: true, score: 50, weight: 0.35,\n        detail: \"Different entries — treated as no evidence either way\" }\n    : { available: true, score: r, weight: 0.8,\n        detail: \"Spelling similarity \" + Math.round(r) + \"%\" };\n}\n\n// Family: match relatives greedily, best pair first. The two desks have\n// no shared ordering and may have recorded different numbers of people.\nconst RELATION_GROUP = {\n  mother: \"parent\", father: \"parent\", parent: \"parent\", guardian: \"parent\",\n  son: \"child\", daughter: \"child\", child: \"child\",\n  brother: \"sibling\", sister: \"sibling\", sibling: \"sibling\",\n  spouse: \"spouse\", wife: \"spouse\", husband: \"spouse\",\n  aunt: \"extended\", uncle: \"extended\", cousin: \"extended\", grandparent: \"extended\",\n};\nlet family;\nconst fa = a.family_members || [], fb = b.family_members || [];\nif (!fa.length || !fb.length) {\n  family = { available: false, score: 0, weight: 0,\n             detail: \"No family member recorded by at least one registry — excluded.\" };\n} else {\n  const pairs = [];\n  for (let i = 0; i < fa.length; i++) {\n    for (let j = 0; j < fb.length; j++) {\n      const ga = RELATION_GROUP[fa[i].relation];\n      const gb = RELATION_GROUP[fb[j].relation];\n      const relFactor = (!ga || !gb) ? 0.85\n        : (fa[i].relation === fb[j].relation ? 1 : (ga === gb ? 0.94 : 0.55));\n      pairs.push({ s: nameScore(fa[i].name_key.replace(/ /g, \"\"),\n                             fb[j].name_key.replace(/ /g, \"\")) * relFactor,\n                   i: i, j: j, am: fa[i], bm: fb[j] });\n    }\n  }\n  pairs.sort((x, y) => y.s - x.s);\n  const usedA = {}, usedB = {}, chosen = [];\n  for (let k = 0; k < pairs.length; k++) {\n    if (usedA[pairs[k].i] || usedB[pairs[k].j]) continue;\n    usedA[pairs[k].i] = true; usedB[pairs[k].j] = true; chosen.push(pairs[k]);\n  }\n  const best = chosen[0].s;\n  let sum = 0;\n  for (let k = 0; k < chosen.length; k++) sum += chosen[k].s;\n  // One confidently shared relative is the evidence; a second unmatched\n  // one usually means the desks asked different questions.\n  const score = 0.75 * best + 0.25 * (sum / chosen.length);\n  family = { available: true, score: score,\n    weight: fa.length === fb.length ? 1 : 0.8,\n    detail: chosen[0].am.name + \" (\" + chosen[0].am.relation + \") vs \" +\n            chosen[0].bm.name + \" (\" + chosen[0].bm.relation + \")\" };\n}\n\nconst round = (o) => Object.assign({}, o, { score: Math.round(o.score * 10) / 10 });\nreturn [{ json: Object.assign({}, p, {\n  family: round(family), origin_place: round(origin),\n  last_seen_place: round(lastSeen), birth_date: round(age), nationality: round(nat),\n  sex_check: (a.sex && b.sex) ? (a.sex === b.sex ? \"agrees\" : \"conflict\") : \"unavailable\",\n}) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2368,
+        112
+      ],
+      "name": "09 — Calculate Context Similarity"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// The headline number is a POTENTIAL MATCH SCORE, never a confidence or\n// a probability of identity. It says how strongly these two records\n// should be prioritised for a human to look at, and nothing else.\nconst p = $input.first().json;\n\nconst WEIGHTS = {\n  face: 0.30, name: 0.25, family: 0.15,\n  birth_date: 0.10, origin_place: 0.09, last_seen_place: 0.06, nationality: 0.05,\n};\n\n// Face is the heaviest single signal but deliberately short of a\n// majority, so the other five together always outweigh it.\nconst FACE_ONLY_CEILING = 39;\nconst SEX_CONFLICT_DAMPING = 0.55;\n\nconst fields = [\"face\", \"name\", \"family\", \"birth_date\", \"origin_place\",\n               \"last_seen_place\", \"nationality\"];\nconst signals = [];\nlet num = 0, den = 0, total = 0;\nfor (let i = 0; i < fields.length; i++) {\n  const f = fields[i];\n  const s = p[f] || { available: false, score: 0, weight: 0, detail: \"not evaluated\" };\n  const w = WEIGHTS[f] * (s.weight || 0);\n  num += (s.score || 0) * w;\n  den += w;\n  total += WEIGHTS[f];\n  signals.push({ field: f, score: s.score || 0, weight: s.weight || 0,\n                 available: !!s.available, detail: s.detail });\n}\n\nconst raw = den ? num / den : 0;\nconst coverage = den / total;\n// Sparse evidence is capped: a pair agreeing on one signal cannot\n// present as strongly as one corroborated across many.\nlet score = raw * Math.min(1, 0.55 + 0.5 * coverage);\n\nconst flags = [];\nif (p.sex_check === \"conflict\") {\n  score = score * SEX_CONFLICT_DAMPING;\n  flags.push(\"Sex recorded differently between registries\");\n}\n\n// Scores are renormalised over the evidence actually available, so a\n// pair whose only usable signal is the face would renormalise straight\n// back up to the face score. Close that path explicitly.\nlet nonFace = 0;\nfor (let i = 0; i < signals.length; i++) {\n  if (signals[i].field !== \"face\") nonFace += WEIGHTS[signals[i].field] * signals[i].weight;\n}\nconst faceOnly = nonFace <= 1e-9 && (p.face && p.face.weight > 0);\nif (faceOnly && score > FACE_ONLY_CEILING) {\n  score = FACE_ONLY_CEILING;\n  flags.push(\"Facial similarity is the only available signal — score capped pending corroboration\");\n}\n\nconst band = score >= 80 ? \"strong\" : (score >= 60 ? \"possible\" : (score >= 40 ? \"weak\" : \"unlikely\"));\nconst surfaced = signals.filter((s) => s.available && s.score >= 65)\n  .sort((x, y) => y.score - x.score);\n\nreturn [{ json: Object.assign({}, p, {\n  potential_match_score: Math.round(score * 10) / 10,\n  band: band,\n  evidence_coverage: Math.round(coverage * 100) / 100,\n  signals: signals,\n  surfaced_because: surfaced,\n  flags: flags,\n  face_only: faceOnly,\n  weights: WEIGHTS,\n  review_required: true,\n  notice: \"Potential match score — how strongly these records should be \" +\n          \"prioritised for human review. Not a confirmed identity.\",\n  face_notice: \"FACIAL SIMILARITY IS AN INDICATOR, NOT PROOF OF IDENTITY.\",\n  review_notice: \"HUMAN VERIFICATION REQUIRED.\",\n}) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2592,
+        112
+      ],
+      "name": "10 — Calculate Overall Match Score"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// The LLM node is allowed to fail without taking the pipeline with it.\n// An explanation is a convenience for the reviewer; the score and the\n// signals behind it are the actual product, and they are already\n// computed. Losing the prose must never lose the case.\nconst items = $input.all();\nconst scored = $(\"10 — Calculate Overall Match Score\").first().json;\nconst llm = items.length ? items[0].json : {};\nconst text = llm.text || llm.output || llm.response || null;\nreturn [{ json: Object.assign({}, scored, {\n  explanation: text || (\"These records were surfaced because they are similar across \" +\n    \"several independent signals. Facial similarity alone does not establish \" +\n    \"identity or a family relationship. Human verification is required.\"),\n  explanation_generated: !!text,\n}) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3168,
+        112
+      ],
+      "name": "Attach Explanation"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// A case is a request for a person to look, with everything they need\n// to disagree with the engine attached to it.\nconst p = $input.first().json;\nconst id = \"CASE-\" + p.a.record_id + \"-\" + p.b.record_id;\nreturn [{ json: Object.assign({}, p, {\n  review_case: {\n    case_id: id,\n    status: \"awaiting_human_review\",\n    opened_at: new Date().toISOString(),\n    potential_match_score: p.potential_match_score,\n    band: p.band,\n    records: [p.a.record_id, p.b.record_id],\n    face_similarity: p.face && p.face.available ? p.face.score : null,\n    explanation: p.explanation,\n    flags: p.flags,\n    decision: null,\n    decided_by: null,\n    notice: \"No identification has been made. This case exists so a person can decide.\",\n  },\n}) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3616,
+        112
+      ],
+      "name": "13 — Create Review Case"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Record what the human decided. \"referred\" means a person judged the\n// pair worth verifying through the originating organisations — it is\n// explicitly not a confirmation, and nothing downstream may treat it\n// as one.\n//\n// A Wait node resumed by webhook puts a JSON body under .body and query\n// string parameters under .query. Accept either: the resume URL gets called\n// by hand as often as by a caseworker tool, and a decision silently read as\n// \"undecided\" is the worst possible failure here — it looks like the review\n// happened while leaving the case untouched.\nconst resumed = $input.first().json;\nconst hasKeys = (o) => !!o && typeof o === 'object' && Object.keys(o).length > 0;\nconst src = hasKeys(resumed.body) ? resumed.body\n          : (hasKeys(resumed.query) ? resumed.query : resumed);\n\nconst prior = $(\"13 — Create Review Case\").first().json;\nconst decision = src.decision === \"referred\" || src.decision === \"ruled_out\"\n  ? src.decision : \"undecided\";\n\nreturn [{ json: Object.assign({}, prior, {\n  review_case: Object.assign({}, prior.review_case, {\n    status: decision === \"undecided\" ? \"awaiting_human_review\" : \"reviewed\",\n    decision: decision,\n    decided_by: src.reviewer || null,\n    reviewer_note: src.note || \"\",\n    decided_at: new Date().toISOString(),\n    notice: decision === \"referred\"\n      ? \"Referred for verification through the originating organisations. Not a confirmed identity.\"\n      : (decision === \"ruled_out\"\n          ? \"Ruled out by the reviewer.\"\n          : \"No usable decision was supplied — the case remains open. Send \"\n            + \"{\\\"decision\\\":\\\"referred\\\"} or {\\\"decision\\\":\\\"ruled_out\\\"}.\"),\n  }),\n}) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4512,
+        112
+      ],
+      "name": "16 — Update Case Status"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// An append-only record of what the system showed a human and what\n// that human did with it. In a domain where a wrong match can send a\n// child to the wrong adults, being able to reconstruct a decision\n// afterwards matters as much as making it well the first time.\nconst p = $input.first().json;\nreturn [{ json: {\n  audit: {\n    case_id: p.review_case.case_id,\n    logged_at: new Date().toISOString(),\n    records_compared: p.review_case.records,\n    potential_match_score: p.potential_match_score,\n    band: p.band,\n    evidence_coverage: p.evidence_coverage,\n    signals: p.signals,\n    face_backend_dimensions: p.face && p.face.dimensions ? p.face.dimensions : null,\n    face_similarity: p.review_case.face_similarity,\n    flags: p.flags,\n    explanation_was_generated: p.explanation_generated,\n    human_decision: p.review_case.decision,\n    decided_by: p.review_case.decided_by,\n    reviewer_note: p.review_case.reviewer_note,\n    system_made_no_identification: true,\n  },\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4736,
+        112
+      ],
+      "name": "17 — Write Audit Log"
+    }
+  ],
+  "connections": {
+    "01 — Receive NGO Records": {
+      "main": [
+        [
+          {
+            "node": "02 — Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 — Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Input usable?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input usable?": {
+      "main": [
+        [
+          {
+            "node": "03 — Normalize Records",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Malformed Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 — Normalize Records": {
+      "main": [
+        [
+          {
+            "node": "04 — AI Entity Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "04 — AI Entity Extraction",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 — AI Entity Extraction": {
+      "main": [
+        [
+          {
+            "node": "05 — Prepare Face Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 — Prepare Face Images": {
+      "main": [
+        [
+          {
+            "node": "Collect Face Vectors",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "06 — Generate Face Embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 — Generate Face Embeddings": {
+      "main": [
+        [
+          {
+            "node": "Collect Face Vectors",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Collect Face Vectors": {
+      "main": [
+        [
+          {
+            "node": "07 — Calculate Facial Similarity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07 — Calculate Facial Similarity": {
+      "main": [
+        [
+          {
+            "node": "08 — Calculate Name Similarity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08 — Calculate Name Similarity": {
+      "main": [
+        [
+          {
+            "node": "09 — Calculate Context Similarity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "09 — Calculate Context Similarity": {
+      "main": [
+        [
+          {
+            "node": "10 — Calculate Overall Match Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10 — Calculate Overall Match Score": {
+      "main": [
+        [
+          {
+            "node": "11 — Generate Explanation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude (explanation)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "11 — Generate Explanation",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11 — Generate Explanation": {
+      "main": [
+        [
+          {
+            "node": "Attach Explanation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Explanation": {
+      "main": [
+        [
+          {
+            "node": "12 — Filter Priority Matches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12 — Filter Priority Matches": {
+      "main": [
+        [
+          {
+            "node": "13 — Create Review Case",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13 — Create Review Case": {
+      "main": [
+        [
+          {
+            "node": "Respond to Calling System",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Calling System": {
+      "main": [
+        [
+          {
+            "node": "14 — Notify Caseworker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "14 — Notify Caseworker": {
+      "main": [
+        [
+          {
+            "node": "15 — Wait for Human Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15 — Wait for Human Review": {
+      "main": [
+        [
+          {
+            "node": "16 — Update Case Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "16 — Update Case Status": {
+      "main": [
+        [
+          {
+            "node": "17 — Write Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "synthetic": true,
+    "notice": "Compares two humanitarian records and produces a potential match score for human review. It never establishes identity. Built and tested against synthetic data only.",
+    "requires": "An Anthropic credential on the two Claude nodes. Everything else runs without credentials.",
+    "source": "https://github.com/anyasharma2407/reunifyai"
+  }
+}

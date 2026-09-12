@@ -224,6 +224,26 @@ python scripts/n8n_payload.py A-0013 B-0013 > /tmp/payload.json
 curl -X POST -H 'Content-Type: application/json' -d @/tmp/payload.json <webhook-url>
 ```
 
+### Running it yourself
+
+`n8n/reunify_workflow.ts` is the readable copy: the reasoning behind each rule
+sits in the comments beside it. n8n imports JSON and nothing else, so the same
+pipeline is also committed as `n8n/reunify_workflow.json` — **Import from File**
+in the n8n canvas menu.
+
+The only thing it needs is an Anthropic credential on the two Claude nodes.
+Every other node runs without credentials, and the two that reach outward — the
+face-embedding call and the caseworker notification — are set to continue on
+error, so the pipeline still completes when they cannot be reached.
+
+```bash
+python scripts/export_n8n_workflow.py    # regenerate the JSON after editing the SDK code
+```
+
+The exporter reads each Code node's body straight out of the SDK source, so the
+two copies cannot disagree about what the pipeline does; only the graph and the
+node settings are described in the exporter itself.
+
 ### Completing a human review
 
 Stage 15 parks the execution and waits. n8n puts a **signed** resume URL in the
