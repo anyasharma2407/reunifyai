@@ -172,6 +172,41 @@ out center 400;`;
     return { lat: Number(hits[0].lat), lon: Number(hits[0].lon), label: hits[0].display_name };
   }
 
+  // Hand the coordinates to whatever the device actually navigates with.
+  //
+  // There is no single URL that works everywhere: iOS ignores geo:, Android
+  // handles it natively and offers the user their own choice of app, and a
+  // desktop browser has neither. Guessing wrong strands someone holding a
+  // phone in front of a list of places they cannot get to, so each platform
+  // gets the scheme it honours and the desktop falls back to routing on
+  // OpenStreetMap rather than to a commercial service.
+  function directionsUrl(p) {
+    const ua = navigator.userAgent || "";
+    const label = encodeURIComponent(p.name || p.kind.label);
+    if (/iPad|iPhone|iPod/.test(ua)) {
+      return "https://maps.apple.com/?daddr=" + p.lat + "," + p.lon + "&q=" + label;
+    }
+    if (/Android/.test(ua)) {
+      return "geo:" + p.lat + "," + p.lon + "?q=" + p.lat + "," + p.lon + "(" + label + ")";
+    }
+    return "https://www.openstreetmap.org/directions?engine=fossgis_osrm_foot" +
+           "&route=;" + p.lat + "," + p.lon;
+  }
+
+  async function copyCoords(p, button) {
+    const text = p.lat.toFixed(5) + ", " + p.lon.toFixed(5);
+    try {
+      await navigator.clipboard.writeText(text);
+      button.textContent = "Copied";
+    } catch (e) {
+      // Clipboard access is refused in plenty of ordinary situations. Showing
+      // the numbers is worse than copying them but far better than failing
+      // silently -- they can still be read out or written down.
+      button.textContent = text;
+    }
+    setTimeout(() => { button.textContent = "Copy"; }, 2500);
+  }
+
   // --- rendering --------------------------------------------------------
 
   function renderResults(list, originLabel) {
@@ -186,20 +221,28 @@ out center 400;`;
     }
     const LIMIT = 60;
     const shown = list.slice(0, LIMIT);
-    const rows = shown.map((p) => `
-      <li class="nb-item">
+    const rows = shown.map((p, i) => `
+      <li class="nb-item" data-idx="${i}">
         <div class="nb-kind">${esc(p.kind.label)}</div>
         <div class="nb-main">
-          <div class="nb-name">${esc(p.name || "Unnamed " + p.kind.label.toLowerCase())}</div>
+          <a class="nb-name" href="${esc(directionsUrl(p))}"
+             ${/Android/.test(navigator.userAgent) ? "" : 'target="_blank" rel="noopener"'}>
+            ${esc(p.name || "Unnamed " + p.kind.label.toLowerCase())}
+          </a>
           ${p.address ? `<div class="nb-sub">${esc(p.address)}</div>` : ""}
           ${p.hours ? `<div class="nb-sub">Hours: ${esc(p.hours)}</div>` : ""}
-          ${p.phone ? `<div class="nb-sub">☎ <a href="tel:${esc(p.phone)}">${esc(p.phone)}</a></div>` : ""}
+          ${p.phone ? `<div class="nb-sub"><a href="tel:${esc(p.phone)}">☎ ${esc(p.phone)}</a></div>` : ""}
+          <div class="nb-acts">
+            <a class="nb-go" href="${esc(directionsUrl(p))}"
+               ${/Android/.test(navigator.userAgent) ? "" : 'target="_blank" rel="noopener"'}>Directions</a>
+            <button class="nb-copy" type="button" data-copy="${i}">Copy</button>
+            <a class="nb-map" target="_blank" rel="noopener"
+               href="https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=17/${p.lat}/${p.lon}">View on map</a>
+          </div>
         </div>
         <div class="nb-dist">
           <span class="nb-km">${esc(readable(p.distance))}</span>
           <span class="nb-dir">${esc(p.dir)}</span>
-          <a class="nb-map" target="_blank" rel="noopener"
-             href="https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=17/${p.lat}/${p.lon}">Map</a>
         </div>
       </li>`).join("");
     host.innerHTML = `
@@ -207,8 +250,13 @@ out center 400;`;
       <p class="nb-origin">${list.length > shown.length
           ? "Nearest " + shown.length + " of " + list.length + " places"
           : shown.length + " place" + (shown.length === 1 ? "" : "s")}
-         within ${RADIUS_M / 1000} km of ${esc(originLabel)}.</p>
+         within ${RADIUS_M / 1000} km of ${esc(originLabel)}.
+         Tap a name for directions.</p>
       <ul class="nb-list">${rows}</ul>`;
+
+    host.querySelectorAll("[data-copy]").forEach((b) => {
+      b.addEventListener("click", () => copyCoords(shown[Number(b.dataset.copy)], b));
+    });
   }
 
   function setStatus(msg, isError) {
