@@ -224,6 +224,25 @@ python scripts/n8n_payload.py A-0013 B-0013 > /tmp/payload.json
 curl -X POST -H 'Content-Type: application/json' -d @/tmp/payload.json <webhook-url>
 ```
 
+### Running the live pipeline
+
+```bash
+scripts/run_pipeline.sh                 # the demo pair
+scripts/run_pipeline.sh A-0001 B-0001   # any planted pair
+```
+
+This calls the production webhook, which listens continuously while the
+workflow is published. The *Execute workflow* button on the canvas is a
+different thing: it arms a separate test webhook, waits about two minutes and
+accepts one call. Useful while building, the wrong thing to depend on in front
+of an audience.
+
+A run takes roughly ten seconds, because two stages call Claude, and it ends
+parked at stage 15 waiting for a human. That is the design rather than a hang.
+To see where it stopped, open **Executions** in n8n and click the newest row:
+the canvas replays with the data that actually flowed through it, and any node
+can be opened to see its input and output.
+
 ### Running it yourself
 
 `n8n/reunify_workflow.ts` is the readable copy: the reasoning behind each rule

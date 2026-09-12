@@ -24,3 +24,5 @@ dist/
 
 .DS_Store
 .env
+.payload.json
+.response.json
