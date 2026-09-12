@@ -249,53 +249,38 @@ distinction on the permanent record.
 
 ### Two implementations, one rulebook
 
-The scoring model exists twice: once in `engine/match.py` and once inside the
+The scoring model exists twice: once in `engine/match.py`, and once inside the
 workflow's Code nodes, which run in a sandbox that cannot import any of this
-project's code. That is a liability unless something checks them against each
-other:
+project's code. Two implementations of one rulebook drift apart unless
+something checks them, and the drift is invisible -- both sides keep returning
+plausible numbers.
 
 ```bash
-node scripts/verify_n8n_parity.mjs /tmp/payload.json
+python scripts/check_parity.py        # every planted pair; exits non-zero on drift
 ```
 
-They are not expected to agree exactly. The Python scorer consults a place-name
-gazetteer and phonetic coders the workflow does not carry, so it resolves known
-aliases the workflow sees only as fuzzy string similarity — worth about two
-points on the demo pair (94.7 vs 92.3). The face score, the weights, the
-coverage damping and the bands must agree; a divergence there is a bug.
+Across all 26 planted pairs: **21 agree exactly, the worst case differs by 0.9
+points, and the two never disagree about the band.** The check fails the build
+if either of the last two stops being true, because the band is what a
+caseworker actually acts on.
 
----
+Getting there meant matching the reference scorer detail for detail, and the
+details were not cosmetic:
 
-## Deploying
+* **Metaphone, not a hand-rolled consonant skeleton.** The JS coder now agrees
+  with the Python one on 200 of the 201 distinct names in the corpus.
+* **Indel ratio, not Levenshtein.** RapidFuzz's `ratio` counts only insertions
+  and deletions -- it is `2*LCS/(len1+len2)` -- and substituting classic edit
+  distance moved name scores by several points.
+* **The place-name gazetteer**, so both sides resolve a known alias outright
+  instead of one of them seeing 82% string similarity.
+* **Four-level date precision** (day, month, year, approx-year) rather than a
+  single slack number, so `June 1, 2000` and `2000-06-01` are recognised as
+  equally precise and carry equal weight.
 
-The synthetic corpus is generated at **build** time, not at boot. Generation
-draws 160 faces and embeds them, which takes about eight seconds; doing that on
-every container start would make each deploy and restart sit there not serving.
-Baking it into the image also means every replica holds the identical corpus.
-
-```bash
-docker build -t reunifyai .
-docker run -p 8000:8000 reunifyai
-```
-
-The image is ~99 MB and the service is stateless, so the smallest instance any
-host offers is enough: 6,400 comparisons take well under a second.
-
-**Render** — New → Blueprint → point it at this repository. `render.yaml` is
-already here; it uses the Docker runtime and health-checks `/api/meta`.
-
-**Fly.io / Railway / Cloud Run** — all build the `Dockerfile` directly. Bind to
-`$PORT`, which the CMD already does.
-
-**Buildpack hosts without Docker** — `Procfile` covers these, but note it has
-to generate the corpus at boot, because buildpack filesystems do not carry
-build output into the running process. Expect a slower cold start.
-
-One caveat worth knowing before a demo: a deployed instance and the n8n
-workflow still do not talk to each other. Stage 06 of the workflow points at a
-face-embedding service, and the preferred path is that embeddings arrive in the
-request rather than being fetched, so nothing needs to reach back into this
-app.
+What still differs: the Python scorer falls back to NYSIIS and Soundex when
+Metaphone does not fire, and the workflow carries Metaphone only. That is the
+residual 0.9 points, and it is documented rather than papered over.
 
 ---
 

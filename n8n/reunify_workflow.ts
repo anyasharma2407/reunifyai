@@ -93,18 +93,74 @@ const clean = (s) => String(s == null ? "" : s).normalize("NFKD")
   .replace(/[\\u0300-\\u036f]/g, "").replace(/\\s+/g, " ").trim();
 const key = (s) => clean(s).toLowerCase().replace(/[^a-z0-9 ]/g, "");
 
-// Dates arrive as ISO, d/m/y, "approx. 1994" or "age approx 32".
-// Anything vaguer than a year becomes a year plus a tolerance, so a
-// vague date dilutes the evidence rather than faking precision.
-const parseYear = (raw) => {
+// Dates arrive as ISO, d/m/y, "March 8, 1994", "April 1988", "approx. 1994"
+// or "age approx 32". Each is turned into an interval plus a statement of how
+// precisely it was recorded, because most registry dates are not points.
+//
+// Precision is tracked separately from the interval, and it is what decides
+// how much the date is allowed to count later: two exact dates that agree is
+// far stronger evidence than two "approx. 1994"s that agree, even though both
+// overlap perfectly. Collapsing that distinction lets a vague date carry the
+// weight of a certain one.
+const MONTHS = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7,
+  august: 8, september: 9, october: 10, november: 11, december: 12,
+  jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10,
+  nov: 11, dec: 12,
+};
+const utc = (y, m, d) => Date.UTC(y, m - 1, d);
+const lastDay = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+
+const parseDate = (raw) => {
   const s = clean(raw);
   if (!s) return null;
-  const age = s.match(/age\\s*(?:approx\\.?)?\\s*(\\d{1,3})/i);
-  if (age) return { year: new Date().getFullYear() - Number(age[1]), slack: 1 };
-  const approx = s.match(/(?:approx\\.?|c\\.?|circa)\\s*(\\d{4})/i);
-  if (approx) return { year: Number(approx[1]), slack: 1 };
-  const y = s.match(/(\\d{4})/);
-  return y ? { year: Number(y[1]), slack: /^\\d{4}-\\d{2}-\\d{2}$/.test(s) ? 0 : 0.5 } : null;
+  const yearWindow = (y, slack, precision) => ({
+    lo: utc(y - slack, 1, 1), hi: utc(y + slack, 12, 31), precision: precision,
+  });
+
+  let m = s.match(/^(?:approx\.?|c\.?|circa|ca\.?)\s*(\d{4})$/i);
+  if (m) return yearWindow(Number(m[1]), 1, "approx-year");
+
+  m = s.match(/^age\s*(?:approx\.?)?\s*(\d{1,3})$/i);
+  if (m) return yearWindow(new Date().getUTCFullYear() - Number(m[1]), 1, "approx-year");
+
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) {
+    const d = utc(Number(m[1]), Number(m[2]), Number(m[3]));
+    return { lo: d, hi: d, precision: "day" };
+  }
+
+  // 08/02/1994 could be D/M or M/D. When both halves are <= 12 the ordering is
+  // unrecoverable, so the window widens to cover both readings rather than
+  // guessing and inventing precision the record does not have.
+  m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
+  if (m) {
+    const pp = Number(m[1]), q = Number(m[2]), y = Number(m[3]);
+    const cand = [];
+    if (q >= 1 && q <= 12 && pp >= 1 && pp <= lastDay(y, q)) cand.push(utc(y, q, pp));
+    if (pp >= 1 && pp <= 12 && q >= 1 && q <= lastDay(y, pp)) cand.push(utc(y, pp, q));
+    if (!cand.length) return yearWindow(y, 0, "year");
+    if (cand.length === 1) return { lo: cand[0], hi: cand[0], precision: "day" };
+    return { lo: Math.min(cand[0], cand[1]), hi: Math.max(cand[0], cand[1]),
+             precision: "month" };
+  }
+
+  m = s.match(/^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})$/);
+  if (m && MONTHS[m[1].toLowerCase()]) {
+    const d = utc(Number(m[3]), MONTHS[m[1].toLowerCase()], Number(m[2]));
+    return { lo: d, hi: d, precision: "day" };
+  }
+
+  m = s.match(/^([A-Za-z]+)\s+(\d{4})$/);
+  if (m && MONTHS[m[1].toLowerCase()]) {
+    const mo = MONTHS[m[1].toLowerCase()], y = Number(m[2]);
+    return { lo: utc(y, mo, 1), hi: utc(y, mo, lastDay(y, mo)), precision: "month" };
+  }
+
+  m = s.match(/^(\d{4})$/);
+  if (m) return yearWindow(Number(m[1]), 0, "year");
+
+  return null;
 };
 
 const shape = (r) => ({
@@ -116,7 +172,7 @@ const shape = (r) => ({
   family_key: key(r.family_name),
   sex: clean(r.sex).toUpperCase().slice(0, 1),
   birth_raw: clean(r.birth_date_raw),
-  birth: parseYear(r.birth_date_raw),
+  birth: parseDate(r.birth_date_raw),
   origin_place: clean(r.origin_place),
   origin_key: key(r.origin_place),
   last_seen_place: clean(r.last_seen_place),
@@ -361,22 +417,85 @@ const jaroWinkler = (a, b) => {
   return j + pre * 0.1 * (1 - j);
 };
 
-// A deliberately crude consonant-skeleton coder. It collapses the vowel
-// and voicing choices that transliteration is least consistent about,
-// which is most of the difference between Mohammed and Muhammad.
-const phonetic = (s) => s.toLowerCase()
-  .replace(/[^a-z]/g, "")
-  .replace(/^(kn|gn|pn|wr)/, "n")
-  .replace(/ph/g, "f").replace(/ck/g, "k").replace(/sch/g, "sk")
-  .replace(/[aeiouyhw]/g, "")
-  .replace(/([bcdfgjklmnpqrstvxz])\\1+/g, "$1")
-  .replace(/[dt]/g, "t").replace(/[bpv]/g, "b").replace(/[gkq]/g, "k")
-  .replace(/[sz]/g, "s").replace(/[mn]/g, "n");
+// Metaphone, matching the reference scorer's coder on 200 of the 201 distinct
+// names in this corpus. Phonetic coding is what recognises Mohammed, Muhammad
+// and Mohamed as one name: edit distance scores them around 0.85, which is
+// indistinguishable from noise, while all three encode to MHMT.
+const metaphone = (word) => {
+  let w = String(word || "").toUpperCase().replace(/[^A-Z]/g, "");
+  if (!w) return "";
+  w = w.replace(/([^C])\1+/g, "$1");
+  if (/^(AE|GN|KN|PN|WR)/.test(w)) w = w.slice(1);
+  else if (w[0] === "X") w = "S" + w.slice(1);
+  else if (/^WH/.test(w)) w = "W" + w.slice(2);
+  const isV = (c) => !!c && "AEIOU".indexOf(c) >= 0;
+  let out = "";
+  for (let i = 0; i < w.length; i++) {
+    const c = w[i], prev = w[i - 1], next = w[i + 1], after = w[i + 2];
+    if (c === prev && c !== "C") continue;
+    if (isV(c)) { if (i === 0) out += c; continue; }
+    if (c === "B") { if (!(i === w.length - 1 && prev === "M")) out += "B"; }
+    else if (c === "C") {
+      if (next === "I" && after === "A") out += "X";
+      else if (next === "H") out += "X";
+      else if ("IEY".indexOf(next) >= 0) { if (prev !== "S") out += "S"; }
+      else out += "K";
+    }
+    else if (c === "D") { if (next === "G" && "EYI".indexOf(after) >= 0) { out += "J"; i++; } else out += "T"; }
+    else if (c === "G") {
+      if (next === "H") { if (i + 1 === w.length - 1 || isV(after)) out += "K"; }
+      else if (next === "N") { /* silent */ }
+      else if ("IEY".indexOf(next) >= 0) out += "J";
+      else out += "K";
+    }
+    else if (c === "H") { if (!(isV(prev) && !isV(next)) && "CSPT".indexOf(prev) < 0) out += "H"; }
+    else if (c === "K") { if (prev !== "C") out += "K"; }
+    else if (c === "P") out += (next === "H") ? "F" : "P";
+    else if (c === "Q") out += "K";
+    else if (c === "S") out += (next === "H" || (next === "I" && "OA".indexOf(after) >= 0)) ? "X" : "S";
+    else if (c === "T") {
+      if (next === "I" && "OA".indexOf(after) >= 0) out += "X";
+      else if (next === "H") out += "0";
+      else if (!(next === "C" && after === "H")) out += "T";
+    }
+    else if (c === "V") out += "F";
+    else if (c === "W" || c === "Y") { if (isV(next)) out += c; }
+    else if (c === "X") out += "KS";
+    else if (c === "Z") out += "S";
+    else out += c;
+  }
+  return out;
+};
+const phonetic = metaphone;
+
+// RapidFuzz's ratio, which the reference scorer uses: Indel similarity, not
+// classic Levenshtein. It counts only insertions and deletions, so it is
+// 2*LCS/(len1+len2). Substitution-based edit distance gives visibly different
+// numbers on the same two names, which is enough to make the two
+// implementations disagree about a score.
+const indelRatio = (x, y) => {
+  if (!x || !y) return 0;
+  if (x === y) return 100;
+  const m = x.length, n = y.length;
+  let prev = new Array(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) {
+    const cur = new Array(n + 1).fill(0);
+    for (let j = 1; j <= n; j++) {
+      cur[j] = x[i - 1] === y[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+    }
+    prev = cur;
+  }
+  return (2 * prev[n]) / (m + n) * 100;
+};
 
 const part = (x, y) => {
   if (!x || !y) return { score: 0, why: "missing" };
   if (x === y) return { score: 100, why: "identical" };
-  const edit = jaroWinkler(x, y) * 100;
+  // Jaro-Winkler rewards a shared prefix, which is what survives most
+  // transliteration; plain edit distance is the better judge of the tail. The
+  // reference scorer weights them 60/40 and this must match it, or the two
+  // implementations report different numbers for the same two names.
+  const edit = 0.6 * (jaroWinkler(x, y) * 100) + 0.4 * indelRatio(x, y);
   const px = phonetic(x), py = phonetic(y);
   if (px && px === py && edit < 90) {
     return { score: 90, why: "phonetic codes match (" + px.toUpperCase() + ")" };
@@ -436,48 +555,215 @@ const contextSimilarity = node({
 const p = $input.first().json;
 const a = p.a, b = p.b;
 
-const ratio = (x, y) => {
-  if (!x || !y) return 0;
-  if (x === y) return 100;
-  const longer = x.length >= y.length ? x : y;
-  const shorter = x.length >= y.length ? y : x;
-  const d = [];
-  for (let i = 0; i <= shorter.length; i++) d.push([i]);
-  for (let j = 0; j <= longer.length; j++) d[0][j] = j;
-  for (let i = 1; i <= shorter.length; i++) {
-    for (let j = 1; j <= longer.length; j++) {
-      const cost = shorter[i - 1] === longer[j - 1] ? 0 : 1;
-      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
-    }
-  }
-  return (1 - d[shorter.length][longer.length] / longer.length) * 100;
+// The gazetteer of place names this matcher is allowed to treat as known
+// equivalents. It is deliberately partial -- a real gazetteer never covers
+// every alias a field office invents -- so fuzzy and phonetic matching still
+// have to carry the aliases it was never told about.
+//
+const PLACE_ALIASES = {
+  "qasr nadeem": "pl01", "kasr nadim": "pl01",
+  "bel haran": "pl02", "belharan": "pl02",
+  "tal mireh": "pl03", "tell mira": "pl03",
+  "zahiryah": "pl04", "zahiriya": "pl04",
+  "sevrin": "pl06", "severin": "pl06",
+  "novi krag": "pl07", "novy krag": "pl07",
+  "hulwan reach": "pl09", "hulwan": "pl09",
+  "camp thirteen": "pl13", "camp 13": "pl13",
+  "ilvar transit site": "pl14", "ilvar transit centre": "pl14",
+  "vantoral reception point": "pl16", "vantoral reception": "pl16",
+};
+const NAT_ALIASES = {
+  "karavian": "nt01", "karavien": "nt01",
+  "ardavoni": "nt02", "ardavonian": "nt02",
+  "meretheen": "nt03", "merethene": "nt03",
+  "hulwani": "nt05", "hulwanese": "nt05",
 };
 
-const place = (x, y) => (!x || !y)
-  ? { available: false, score: 0, weight: 0, detail: "Not recorded — excluded." }
-  : (x === y
-      ? { available: true, score: 100, weight: 1, detail: "Identical entry" }
-      : { available: true, score: ratio(x, y), weight: ratio(x, y) >= 80 ? 1 : 0.7,
-          detail: "Fuzzy similarity " + Math.round(ratio(x, y)) + "%" });
+// Jaro-Winkler and Metaphone, the same pair stage 08 uses on names. Place
+// names are damaged by the same transliteration habits as people's names, so
+// they deserve the same treatment. The sandbox cannot import, so these are
+// duplicated rather than shared -- scripts/check_parity.py keeps the copies
+// honest.
+const jaro = (s1, s2) => {
+  if (!s1.length || !s2.length) return 0;
+  if (s1 === s2) return 1;
+  const win = Math.max(0, Math.floor(Math.max(s1.length, s2.length) / 2) - 1);
+  const f1 = new Array(s1.length).fill(false);
+  const f2 = new Array(s2.length).fill(false);
+  let m = 0;
+  for (let i = 0; i < s1.length; i++) {
+    const lo = Math.max(0, i - win), hi = Math.min(i + win + 1, s2.length);
+    for (let j = lo; j < hi; j++) {
+      if (f2[j] || s1[i] !== s2[j]) continue;
+      f1[i] = true; f2[j] = true; m++; break;
+    }
+  }
+  if (!m) return 0;
+  let k = 0, t = 0;
+  for (let i = 0; i < s1.length; i++) {
+    if (!f1[i]) continue;
+    while (!f2[k]) k++;
+    if (s1[i] !== s2[k]) t++;
+    k++;
+  }
+  return (m / s1.length + m / s2.length + (m - t / 2) / m) / 3;
+};
+const jaroWinkler = (x, y) => {
+  const j = jaro(x, y);
+  let pre = 0;
+  while (pre < 4 && pre < x.length && pre < y.length && x[pre] === y[pre]) pre++;
+  return j + pre * 0.1 * (1 - j);
+};
+// Metaphone, matching the reference scorer's coder on 200 of the 201 distinct
+// names in this corpus. Phonetic coding is what recognises Mohammed, Muhammad
+// and Mohamed as one name: edit distance scores them around 0.85, which is
+// indistinguishable from noise, while all three encode to MHMT.
+const metaphone = (word) => {
+  let w = String(word || "").toUpperCase().replace(/[^A-Z]/g, "");
+  if (!w) return "";
+  w = w.replace(/([^C])\1+/g, "$1");
+  if (/^(AE|GN|KN|PN|WR)/.test(w)) w = w.slice(1);
+  else if (w[0] === "X") w = "S" + w.slice(1);
+  else if (/^WH/.test(w)) w = "W" + w.slice(2);
+  const isV = (c) => !!c && "AEIOU".indexOf(c) >= 0;
+  let out = "";
+  for (let i = 0; i < w.length; i++) {
+    const c = w[i], prev = w[i - 1], next = w[i + 1], after = w[i + 2];
+    if (c === prev && c !== "C") continue;
+    if (isV(c)) { if (i === 0) out += c; continue; }
+    if (c === "B") { if (!(i === w.length - 1 && prev === "M")) out += "B"; }
+    else if (c === "C") {
+      if (next === "I" && after === "A") out += "X";
+      else if (next === "H") out += "X";
+      else if ("IEY".indexOf(next) >= 0) { if (prev !== "S") out += "S"; }
+      else out += "K";
+    }
+    else if (c === "D") { if (next === "G" && "EYI".indexOf(after) >= 0) { out += "J"; i++; } else out += "T"; }
+    else if (c === "G") {
+      if (next === "H") { if (i + 1 === w.length - 1 || isV(after)) out += "K"; }
+      else if (next === "N") { /* silent */ }
+      else if ("IEY".indexOf(next) >= 0) out += "J";
+      else out += "K";
+    }
+    else if (c === "H") { if (!(isV(prev) && !isV(next)) && "CSPT".indexOf(prev) < 0) out += "H"; }
+    else if (c === "K") { if (prev !== "C") out += "K"; }
+    else if (c === "P") out += (next === "H") ? "F" : "P";
+    else if (c === "Q") out += "K";
+    else if (c === "S") out += (next === "H" || (next === "I" && "OA".indexOf(after) >= 0)) ? "X" : "S";
+    else if (c === "T") {
+      if (next === "I" && "OA".indexOf(after) >= 0) out += "X";
+      else if (next === "H") out += "0";
+      else if (!(next === "C" && after === "H")) out += "T";
+    }
+    else if (c === "V") out += "F";
+    else if (c === "W" || c === "Y") { if (isV(next)) out += c; }
+    else if (c === "X") out += "KS";
+    else if (c === "Z") out += "S";
+    else out += c;
+  }
+  return out;
+};
+const phonetic = metaphone;
+
+// Token-set comparison: two desks may write the same place with its words in a
+// different order, or with one of them dropped.
+const tokenSet = (x, y) => {
+  const tx = x.split(" ").filter(Boolean).sort().join(" ");
+  const ty = y.split(" ").filter(Boolean).sort().join(" ");
+  return ratio(tx, ty);
+};
+
+// RapidFuzz's ratio, which the reference scorer uses: Indel similarity, not
+// classic Levenshtein. It counts only insertions and deletions, so it is
+// 2*LCS/(len1+len2). Substitution-based edit distance gives visibly different
+// numbers on the same two names, which is enough to make the two
+// implementations disagree about a score.
+const indelRatio = (x, y) => {
+  if (!x || !y) return 0;
+  if (x === y) return 100;
+  const m = x.length, n = y.length;
+  let prev = new Array(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) {
+    const cur = new Array(n + 1).fill(0);
+    for (let j = 1; j <= n; j++) {
+      cur[j] = x[i - 1] === y[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+    }
+    prev = cur;
+  }
+  return (2 * prev[n]) / (m + n) * 100;
+};
+
+// The reference scorer compares family-member names with the same routine it
+// uses for the person's own name, so this mirrors stage 08 rather than falling
+// back to raw string distance. A relative's name is corroboration precisely
+// because it is damaged independently of the main name, and it deserves the
+// same phonetic treatment.
+const nameScore = (x, y) => {
+  if (!x || !y) return 0;
+  if (x === y) return 100;
+  const edit = 0.6 * (jaroWinkler(x, y) * 100) + 0.4 * indelRatio(x, y);
+  const px = metaphone(x), py = metaphone(y);
+  return (px && px === py && edit < 90) ? 90 : edit;
+};
+
+const ratio = indelRatio;
+
+const place = (x, y) => {
+  if (!x || !y) {
+    return { available: false, score: 0, weight: 0, detail: "Not recorded — excluded." };
+  }
+  if (x === y) {
+    return { available: true, score: 100, weight: 1, detail: "Identical entry" };
+  }
+  const cx = PLACE_ALIASES[x], cy = PLACE_ALIASES[y];
+  if (cx && cx === cy) {
+    return { available: true, score: 97, weight: 1,
+             detail: x + " ≈ " + y + " — known alias in the place-name gazetteer" };
+  }
+  let score = Math.max(tokenSet(x, y), jaroWinkler(x, y) * 100);
+  let detail = "Fuzzy similarity " + Math.round(score) + "% — not a known alias";
+  const px = phonetic(x.replace(/ /g, "")), py = phonetic(y.replace(/ /g, ""));
+  if (px && px === py && score < 90) {
+    score = 90;
+    detail = x + " ≈ " + y + " — phonetic codes match (" + px.toUpperCase() +
+             "), unlisted alias or spelling drift";
+  }
+  // Place names are noisier evidence than names or dates; a middling score
+  // between two genuinely different towns should not move the needle much.
+  return { available: true, score: score, weight: score >= 80 ? 1 : 0.7, detail: detail };
+};
 
 const origin = place(a.origin_key, b.origin_key);
 const lastSeen = place(a.last_seen_key, b.last_seen_key);
 
-// Age: overlapping tolerance windows agree; the evidence is only as
-// strong as the vaguer of the two records.
+// Age: overlapping tolerance windows agree, and the evidence is only ever as
+// strong as the vaguer of the two records. Two precise dates that disagree is
+// real counter-evidence; two vague ones a year apart is routine registry drift,
+// so they decay at very different rates.
+const PRECISION_WEIGHT = { day: 1.0, month: 0.85, year: 0.70, "approx-year": 0.58 };
+const DAY_MS = 86400000;
 let age;
 if (!a.birth || !b.birth) {
   age = { available: false, score: 0, weight: 0, detail: "Not recorded — excluded." };
 } else {
-  const gap = Math.abs(a.birth.year - b.birth.year);
-  const slack = a.birth.slack + b.birth.slack;
-  const precise = a.birth.slack === 0 && b.birth.slack === 0;
-  const w = precise ? 1 : 0.58;
-  age = gap <= slack
-    ? { available: true, score: 100, weight: w,
-        detail: precise ? "Exact dates agree" : "Tolerance windows overlap" }
-    : { available: true, score: 100 * Math.pow(0.5, gap / (precise ? 1.2 : 3.5)), weight: w,
-        detail: "About " + gap + " year(s) apart" };
+  const w = Math.min(PRECISION_WEIGHT[a.birth.precision] || 0.58,
+                     PRECISION_WEIGHT[b.birth.precision] || 0.58);
+  const tight = a.birth.precision === "day" && b.birth.precision === "day";
+  const overlap = !(a.birth.hi < b.birth.lo || b.birth.hi < a.birth.lo);
+  if (overlap) {
+    age = { available: true, score: 100, weight: w,
+            detail: tight ? "Exact dates agree"
+                          : "Tolerance windows overlap (" + a.birth.precision +
+                            " vs " + b.birth.precision + " precision)" };
+  } else {
+    const midA = (a.birth.lo + a.birth.hi) / 2;
+    const midB = (b.birth.lo + b.birth.hi) / 2;
+    const gap = Math.abs(midA - midB) / DAY_MS;
+    const halfLife = tight ? 120 : 400;
+    const years = gap / 365.25;
+    age = { available: true, score: 100 * Math.pow(0.5, gap / halfLife), weight: w,
+            detail: "Windows do not overlap — about " + years.toFixed(1) + " year(s) apart" };
+  }
 }
 
 // Nationality is the weakest signal and the most dangerous to lean on:
@@ -493,8 +779,13 @@ if (!a.nationality_key || !b.nationality_key ||
           detail: "Not recorded or undetermined — excluded." };
 } else if (a.nationality_key === b.nationality_key) {
   nat = { available: true, score: 100, weight: 1, detail: "Identical entry" };
+} else if (NAT_ALIASES[a.nationality_key] &&
+           NAT_ALIASES[a.nationality_key] === NAT_ALIASES[b.nationality_key]) {
+  nat = { available: true, score: 97, weight: 1,
+          detail: a.nationality + " ≈ " + b.nationality + " — known equivalent" };
 } else {
-  const r = ratio(a.nationality_key, b.nationality_key);
+  const r = Math.max(indelRatio(a.nationality_key, b.nationality_key),
+                     jaroWinkler(a.nationality_key, b.nationality_key) * 100);
   nat = r < 70
     ? { available: true, score: 50, weight: 0.35,
         detail: "Different entries — treated as no evidence either way" }
@@ -524,7 +815,8 @@ if (!fa.length || !fb.length) {
       const gb = RELATION_GROUP[fb[j].relation];
       const relFactor = (!ga || !gb) ? 0.85
         : (fa[i].relation === fb[j].relation ? 1 : (ga === gb ? 0.94 : 0.55));
-      pairs.push({ s: ratio(fa[i].name_key, fb[j].name_key) * relFactor,
+      pairs.push({ s: nameScore(fa[i].name_key.replace(/ /g, ""),
+                             fb[j].name_key.replace(/ /g, "")) * relFactor,
                    i: i, j: j, am: fa[i], bm: fb[j] });
     }
   }
