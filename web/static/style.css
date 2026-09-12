@@ -924,3 +924,5 @@ body.demo-open { overflow: hidden; }
 }
 .nb-error-line { color: var(--conflict); display: block; margin-bottom: 4px; }
 #nb-approx { margin-top: 10px; }
+.nb-credit a { color: var(--muted); }
+.nb-credit a:hover { color: var(--accent); }

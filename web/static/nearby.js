@@ -336,7 +336,10 @@ out center 220;`;
         <div id="nb-results"></div>
 
         <p class="nb-credit">
-          Data © OpenStreetMap contributors, via the Overpass API. Unverified
+          Place data ©&nbsp;<a href="https://www.openstreetmap.org/copyright"
+          target="_blank" rel="noopener">OpenStreetMap contributors</a>,
+          available under the Open Database Licence, retrieved live through the
+          public Overpass API; place-name search by Nominatim. Unverified
           community data. This page holds no records and stores nothing.
         </p>
       </div>`;
