@@ -293,6 +293,15 @@ async function selectRecord(recordId) {
   renderSubject(payload.a_record);
   renderDecision(payload.decision);
 
+  // On a narrow screen the sidebar sits above the results, so choosing a
+  // record leaves the reader looking at the list they just used. Bring the
+  // answer they asked for into view.
+  if (window.matchMedia("(max-width: 1040px)").matches) {
+    requestAnimationFrame(() => {
+      el("results").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   const truthId = payload.ground_truth ? payload.ground_truth.b_record_id : null;
   const n = payload.candidates.length;
 

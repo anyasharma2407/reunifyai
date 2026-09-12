@@ -418,7 +418,13 @@ h1, h2, h3 { margin: 0; letter-spacing: -.015em; }
 
 @media (max-width: 1040px) {
   .layout { grid-template-columns: 1fr; }
-  .registry-panel { position: static; max-height: 420px; }
+  /* The sidebar stops being a sticky column and becomes the first thing on the
+     page. It must not clip: capping the whole panel hid the record list
+     entirely behind the difficult-case chips, so on a phone there was no way
+     to browse Registry A at all. Bound the list instead, and let the panel
+     around it grow to fit. */
+  .registry-panel { position: static; max-height: none; overflow: visible; }
+  .record-list { max-height: 44vh; overflow-y: auto; }
   .ev-row { grid-template-columns: 1fr; gap: 5px; }
   .ev-score { text-align: left; }
   .ev-score-bar { max-width: 200px; }
@@ -757,4 +763,58 @@ body.demo-open { overflow: hidden; }
   .ti-cols { grid-template-columns: 1fr; }
   .ti-actions { flex-wrap: wrap; }
   .ti-actions .btn { width: 100%; }
+}
+
+
+/* ==================================================================
+   Phones
+   ------------------------------------------------------------------
+   The interface is two dense columns on a desktop. On a phone those
+   stack, which is fine, but three things then go wrong and all three
+   are fixed here: the standing notice eats most of the first screen,
+   the subject's details become one very long column, and selecting a
+   record leaves you looking at the list you just used rather than the
+   result you asked for.
+   ================================================================== */
+
+@media (max-width: 640px) {
+  .notice-bar {
+    align-items: flex-start; gap: 10px;
+    padding: 9px 14px; font-size: 12.5px; line-height: 1.45;
+  }
+  .notice-chip { flex: none; }
+
+  .masthead { padding: 15px 16px 13px; gap: 12px; }
+  .masthead h1 { font-size: 21px; }
+  .tagline { font-size: 13px; }
+  .brand { gap: 11px; }
+  .stats { width: 100%; gap: 0; justify-content: space-between; }
+  .stat { text-align: left; }
+  .stat-value { font-size: 18px; }
+
+  .layout { padding: 12px 12px 32px; gap: 12px; }
+  .panel-head, .search-wrap, .showcase, .record-list { padding-left: 14px; padding-right: 14px; }
+  .record-list { max-height: 38vh; }
+
+  /* Two short columns read better than one tall one. */
+  .field-grid { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px 14px; }
+
+  .subject-card { padding: 16px 14px; }
+  .subject-head { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .subject-actions { width: 100%; }
+  .subject-face { width: 66px; height: 66px; }
+  .subject-name { font-size: 21px; }
+
+  .candidate { padding: 14px 12px; }
+  .cand-head { flex-wrap: wrap; gap: 10px; }
+  .conf-value { font-size: 30px; }
+  .face-pair { padding: 14px 12px; gap: 12px; }
+  .face-fig img { max-width: 128px; }
+  .face-pct { font-size: 34px; }
+
+  .demo-overlay, .ti-picker { padding: 10px; }
+  .demo-panel { padding: 18px 15px 16px; border-radius: 12px; }
+  .ti-picker-inner { padding: 16px 14px; }
+  .demo-total { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .results-head h3 { font-size: 17px; }
 }
