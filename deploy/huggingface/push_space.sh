@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# Publish the app to a Hugging Face Space.
+# Publish the app to a Hugging Face STATIC Space.
+#
+# Docker Spaces now require a PRO subscription on free CPU hardware; static
+# Spaces remain free for everyone. The matcher is deterministic over a fixed
+# corpus, so scripts/build_static.py precomputes every answer the API could
+# give and the interface runs with no server at all.
 #
 #   HF_TOKEN=hf_xxx deploy/huggingface/push_space.sh [space-name]
 #
@@ -17,7 +22,7 @@ set -euo pipefail
 
 SPACE_NAME="${1:-reunifyai}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-HF="$ROOT/.venv/bin/hf"
+PY="$ROOT/.venv/bin/python"
 
 if [[ -z "${HF_TOKEN:-}" ]]; then
   echo "HF_TOKEN is not set. Create one with write access at" >&2
@@ -25,42 +30,53 @@ if [[ -z "${HF_TOKEN:-}" ]]; then
   exit 1
 fi
 
-USERNAME="$("$HF" auth whoami --token "$HF_TOKEN" | head -1 | tr -d '[:space:]')"
+# The hf CLI's flags have moved between versions; the Python API has not.
+USERNAME="$("$PY" - <<'PY'
+import os
+from huggingface_hub import HfApi
+print(HfApi(token=os.environ["HF_TOKEN"]).whoami()["name"])
+PY
+)"
 REPO="$USERNAME/$SPACE_NAME"
 echo "Publishing to Space: $REPO"
 
-"$HF" repo create "$REPO" --repo-type space --space_sdk docker \
-      --token "$HF_TOKEN" --exist-ok >/dev/null
+SPACE_NAME="$SPACE_NAME" REPO="$REPO" "$PY" - <<'PY'
+import os
+from huggingface_hub import HfApi
+HfApi(token=os.environ["HF_TOKEN"]).create_repo(
+    repo_id=os.environ["REPO"], repo_type="space",
+    space_sdk="static", exist_ok=True)
+PY
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-git clone -q "https://oauth2:$HF_TOKEN@huggingface.co/spaces/$REPO" "$WORK/space"
-cd "$WORK/space"
 
-# Replace the Space's contents with the current application.
-git rm -rq --ignore-unmatch . 2>/dev/null || true
-mkdir -p engine web scripts
-cp -R "$ROOT/engine/." engine/
-cp -R "$ROOT/web/." web/
-cp -R "$ROOT/scripts/." scripts/
-cp "$ROOT/Dockerfile" "$ROOT/requirements.txt" .
-cp "$ROOT/deploy/huggingface/README.md" README.md
-find . -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+echo "Building static site..."
+(cd "$ROOT" && PYTHONPATH="$ROOT" "$PY" scripts/build_static.py --out "$WORK/dist")
+cp "$ROOT/deploy/huggingface/README.md" "$WORK/dist/README.md"
 
-git add -A
-if git diff --cached --quiet; then
-  echo "Space is already up to date."
-else
-  git -c user.email="noreply@huggingface.co" -c user.name="ReunifyAI deploy" \
-      commit -qm "Deploy ReunifyAI: synthetic-data candidate matching for human review"
-  git push -q origin main
-  echo "Pushed."
-fi
+# Uploaded through the Hub API rather than git. The corpus includes 160 PNGs,
+# and the Hub's pre-receive hook requires binaries to arrive via git-lfs, which
+# would mean installing and configuring it locally. upload_folder handles that
+# negotiation itself, and it is the supported path for exactly this case.
+REPO="$REPO" SRC="$WORK/dist" "$PY" - <<'PY'
+import os
+from huggingface_hub import HfApi
+api = HfApi(token=os.environ["HF_TOKEN"])
+api.upload_folder(
+    repo_id=os.environ["REPO"],
+    repo_type="space",
+    folder_path=os.environ["SRC"],
+    commit_message="Deploy ReunifyAI: synthetic-data candidate matching for human review",
+    delete_patterns="*",
+)
+print("Uploaded.")
+PY
 
 echo
 echo "Space:  https://huggingface.co/spaces/$REPO"
 echo "App:    https://$(echo "$USERNAME" | tr '[:upper:]' '[:lower:]')-$(echo "$SPACE_NAME" | tr '[:upper:]' '[:lower:]').hf.space"
 echo "Demo:   .../?demo=1"
 echo
-echo "The first build takes a few minutes: it installs dependencies and draws"
-echo "the 160 synthetic faces. Watch it under the Space's Logs tab."
+echo "A static Space goes live as soon as the push finishes -- there is no"
+echo "build step, no cold start, and nothing to keep awake."

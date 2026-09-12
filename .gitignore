@@ -17,5 +17,10 @@ data/
 # Optional face model, downloaded by the user (see README)
 models/
 
+# The static build. Like data/, it is generated output -- 16 MB of precomputed
+# JSON and the same faces again -- rebuilt by scripts/build_static.py whenever
+# it is needed.
+dist/
+
 .DS_Store
 .env

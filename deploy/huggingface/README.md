@@ -3,11 +3,10 @@ title: ReunifyAI
 emoji: 🔎
 colorFrom: blue
 colorTo: gray
-sdk: docker
-app_port: 8000
+sdk: static
 pinned: false
 license: mit
-short_description: Candidate matching across disconnected family-tracing registries
+short_description: Candidate matching for family tracing
 ---
 
 # ReunifyAI — Reunification Engine
