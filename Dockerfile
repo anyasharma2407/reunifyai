@@ -24,5 +24,11 @@ COPY scripts/ ./scripts/
 # the same synthetic people and the same faces.
 RUN python -m engine.generate --seed 7 --size 80
 
+# Run as a non-root user. Hugging Face Spaces runs containers as UID 1000, and
+# nothing here needs to write at runtime -- the corpus was generated during the
+# build and is only read from.
+RUN useradd --create-home --uid 1000 app
+USER app
+
 EXPOSE 8000
 CMD ["sh", "-c", "uvicorn web.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
