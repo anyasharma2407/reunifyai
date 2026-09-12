@@ -284,6 +284,72 @@ residual 0.9 points, and it is documented rather than papered over.
 
 ---
 
+## Deploying
+
+It is live here, as a **static** Hugging Face Space:
+
+**<https://anyasharma2407-reunifyai.static.hf.space>**
+&nbsp;&nbsp;([`/?demo=1`](https://anyasharma2407-reunifyai.static.hf.space/?demo=1) for the walk-through)
+
+Note the URL: static Spaces are served from `*.static.hf.space`. The plain
+`*.hf.space` address returns 404.
+
+```bash
+HF_TOKEN=hf_xxx deploy/huggingface/push_space.sh     # build and deploy
+```
+
+### Why static
+
+Both container routes are paywalled. Cloud Run refuses to deploy without an
+active billing account even for free-tier usage, and Hugging Face now requires
+a paid subscription to run a Docker Space on free hardware. A demo that falls
+over because a billing account lapsed is a bad demo.
+
+Static works here because the matcher is deterministic over a fixed corpus, so
+every answer the API could give is computable in advance.
+`scripts/build_static.py` scores all 6,400 comparisons up front and writes them
+as JSON; `web/static/static-mode.js` intercepts `fetch` so the interface reads
+those files instead of calling the API.
+
+The frontend is deliberately not forked. `app.js` and `demo.js` are
+byte-identical in both modes -- the shim is the only difference -- so there is
+one frontend to maintain, and running `uvicorn` locally still exercises the
+real service rather than a copy that has quietly drifted from it.
+
+The result has no cold start, nothing to keep awake and nothing to pay for.
+What is lost is the reviewer's triage log, which moves from server memory to
+the visitor's browser; the server's copy was discarded on restart anyway.
+
+```bash
+python scripts/build_static.py --out dist    # build without deploying
+cd dist && python -m http.server 8000        # and serve it locally
+```
+
+### Running the container instead
+
+The corpus is generated at **build** time, not at boot: generation draws 160
+faces and embeds them, and doing that on every container start would make each
+deploy and restart sit there not serving.
+
+```bash
+docker build -t reunifyai .
+docker run -p 8000:8000 reunifyai
+```
+
+The image is ~99 MB, runs as UID 1000, and the service is stateless, so the
+smallest instance any host offers is enough. `render.yaml` is a Render
+blueprint; Fly.io, Railway and Cloud Run all build the `Dockerfile` directly
+and bind to `$PORT`, which the CMD already honours. `Procfile` covers buildpack
+hosts, but there the corpus has to be generated at boot, so expect a slow cold
+start.
+
+One caveat worth knowing before a demo: a deployed instance and the n8n
+workflow still do not talk to each other. Stage 06 of the workflow points at a
+face-embedding service, and the preferred path is that embeddings arrive in the
+request rather than being fetched, so nothing needs to reach back into this app.
+
+---
+
 ## Layout
 
 ```
