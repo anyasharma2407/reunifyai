@@ -338,7 +338,9 @@ function markDecidedCards(decision) {
     card.classList.toggle("decided", !!isSubject);
     card.classList.toggle("decided-rule_out",
       !!isSubject && decision.decision === "rule_out");
-    card.querySelectorAll("[data-action]").forEach((b) => {
+
+    card.querySelectorAll("button[data-action]").forEach((b) => {
+      if (b.dataset.action === "undo") return;
       const mine = isSubject && b.dataset.action === decision.decision;
       b.classList.toggle("btn-decided", !!mine);
       if (!b.dataset.label) b.dataset.label = b.textContent.trim();
@@ -346,6 +348,22 @@ function markDecidedCards(decision) {
         ? (decision.decision === "refer" ? "✓ Referred" : "✓ Ruled out")
         : b.dataset.label;
     });
+
+    // The undo lives on the card too. It was only ever in the banner above the
+    // list, which is the same reason the decision itself looked like it had
+    // not registered: the acknowledgement was a screen away from the click.
+    const actions = card.querySelector(".cand-actions");
+    let undo = card.querySelector('button[data-action="undo"]');
+    if (isSubject && actions && !undo) {
+      undo = document.createElement("button");
+      undo.className = "btn btn-undo";
+      undo.type = "button";
+      undo.dataset.action = "undo";
+      undo.textContent = "Undo";
+      actions.insertBefore(undo, actions.querySelector(".action-note"));
+    } else if (!isSubject && undo) {
+      undo.remove();
+    }
   });
 }
 
@@ -415,7 +433,9 @@ el("candidates").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
   const card = btn.closest(".candidate");
-  if (card) recordDecision(card.dataset.bId, btn.dataset.action);
+  if (!card) return;
+  if (btn.dataset.action === "undo") clearDecision();
+  else recordDecision(card.dataset.bId, btn.dataset.action);
 });
 
 el("decision-banner").addEventListener("click", (e) => {

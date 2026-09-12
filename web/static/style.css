@@ -981,3 +981,5 @@ a.nb-name:hover { color: var(--accent); text-decoration: underline; }
 .candidate.decided-rule_out .btn-decided {
   background: var(--muted) !important; border-color: var(--muted) !important;
 }
+.btn-undo { border-color: var(--line); color: var(--ink-soft); }
+.btn-undo:hover { border-color: var(--conflict); color: var(--conflict); }
