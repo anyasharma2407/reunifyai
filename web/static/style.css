@@ -128,7 +128,21 @@ h1, h2, h3 { margin: 0; letter-spacing: -.015em; }
 
 /* ------------------------------------------------------------ showcase */
 
-.showcase { padding: 2px 12px 10px; border-bottom: 1px solid var(--line-soft); }
+/* The queue has to be allowed to shrink. Without a cap it grew to its natural
+   height -- 890px of rows inside a 716px panel on a laptop -- and pushed the
+   record list out of the panel entirely: sixty records rendered, none of them
+   visible. A flex child also needs min-height:0 before it will shrink at all. */
+.showcase {
+  padding: 2px 12px 10px; border-bottom: 1px solid var(--line-soft);
+  /* 0 0 auto, not 0 1 auto: allowed to shrink, the flex algorithm squeezed it
+     to about two rows to give the record list room it did not need. It should
+     take its natural height up to the cap, and the list takes the rest. */
+  flex: 0 0 auto; min-height: 0; overflow-y: auto;
+  /* A viewport unit, not a percentage. The panel has max-height but no definite
+     height, and a percentage max-height on a child of such a parent resolves to
+     none -- so the cap silently did nothing and the queue grew to 890px again. */
+  max-height: 30vh;
+}
 .showcase-label {
   display: block; font-size: 11px; text-transform: uppercase;
   letter-spacing: .075em; color: var(--muted); margin-bottom: 7px;
@@ -145,7 +159,12 @@ h1, h2, h3 { margin: 0; letter-spacing: -.015em; }
 
 /* --------------------------------------------------------- record list */
 
-.record-list { list-style: none; margin: 0; padding: 6px; overflow-y: auto; flex: 1; }
+/* Whatever the queue takes, the record list keeps enough room to be usable.
+   Being able to browse Registry A is the point of the panel. */
+.record-list {
+  list-style: none; margin: 0; padding: 6px; overflow-y: auto;
+  flex: 1 1 auto; min-height: 148px;
+}
 .record-item {
   padding: 9px 11px; border-radius: 9px; cursor: pointer;
   border: 1.5px solid transparent; transition: .11s;
@@ -1026,3 +1045,12 @@ a.nb-name:hover { color: var(--accent); text-decoration: underline; }
   margin-top: 1px;
 }
 .queue-done { font-size: 13px; color: var(--strong); margin: 4px 0 8px; }
+
+
+/* The sidebar carries three actions, the queue and the record list. Stacked at
+   full width with generous margins they left two rows of Registry A visible on
+   a laptop, which makes the list decorative. Tightened so the list keeps a
+   usable share of the panel. */
+.btn-demo, .btn-help, .btn-tryit { margin-bottom: 7px; padding: 9px 14px; }
+.btn-tryit { margin-bottom: 12px; }
+.search-wrap { padding-bottom: 10px; }
