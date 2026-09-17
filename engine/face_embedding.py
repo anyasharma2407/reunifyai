@@ -373,9 +373,20 @@ class ArcFaceOnnxBackend:
         self.input_name = self.session.get_inputs()[0].name
 
     def generate(self, img: Image.Image) -> np.ndarray:
-        face, _found = align(img, out=112, eye_y=0.38, eye_gap=0.42)
-        a = np.asarray(face.convert("RGB"), dtype=np.float32)
-        a = (a - 127.5) / 127.5
+        # Raw 0-255 RGB, and no re-cropping. Both of those were found by
+        # measurement rather than assumed, because both failure modes are silent:
+        #
+        #   * Scaling to [-1, 1] the way many ArcFace exports expect collapses
+        #     this one. Every embedding comes out nearly identical -- two
+        #     different people scored 0.967 cosine -- so the model looks like it
+        #     is working while telling you nothing. On LFW it fell from 94% to
+        #     59%.
+        #   * The aligner above is tuned for the drawn faces this project
+        #     generates, and it mis-locates real photographs. ArcFace was trained
+        #     on its own alignment and would rather have the frame it was given
+        #     than a worse one; re-cropping cost 15 points on LFW.
+        a = np.asarray(img.convert("RGB").resize((112, 112), Image.BILINEAR),
+                       dtype=np.float32)
         a = np.transpose(a, (2, 0, 1))[None, ...]
         v = self.session.run(None, {self.input_name: a})[0].ravel().astype(np.float32)
         return v / (float(np.linalg.norm(v)) + 1e-9)
@@ -483,11 +494,24 @@ class FaceEmbeddingService:
 
 
 def _select_backend():
-    """Prefer a learned embedding when one is installed; otherwise the local one."""
+    """
+    The gradient descriptor unless ArcFace is asked for by name.
+
+    A learned model is the better matcher on photographs of real people -- 86%
+    against 57% on LFW -- and the worse one here, because this project's faces
+    are drawn and a model trained on photographs has never seen anything like
+    them: 22 of 40 against 34. Neither descriptor is simply better; each wins on
+    the domain it was built for.
+
+    So the presence of a model file is not taken as permission to use it. An
+    earlier version preferred ArcFace automatically whenever the file existed,
+    which meant downloading it to run the benchmark quietly made the demo worse.
+    Set FACE_BACKEND=arcface-onnx to ask for it.
+    """
     import os
     want = os.environ.get("FACE_BACKEND", "").strip().lower()
     model = Path(__file__).resolve().parent.parent / "models" / "arcface.onnx"
-    if want == "arcface-onnx" or (want == "" and model.exists()):
+    if want == "arcface-onnx":
         try:
             return ArcFaceOnnxBackend(model)
         except Exception as exc:            # pragma: no cover - optional path

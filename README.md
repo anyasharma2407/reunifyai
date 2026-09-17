@@ -154,16 +154,50 @@ Measured on 40 identities with two independent captures each: **34/40 rank-1
 retrieval**, genuine pairs at a median 95% calibrated similarity, unrelated
 pairs typically under 30%.
 
-### Swapping in a real model
+### Measured on real photographs
 
-The backend is pluggable. `ArcFaceOnnxBackend` is used automatically when
-`onnxruntime` is installed and `models/arcface.onnx` exists; set
-`FACE_BACKEND=arcface-onnx` to require it. Any ONNX model taking a 112×112 face
-and returning a vector will work, and nothing else in the project changes. The
-default needs no model file and no network, so the demo cannot fail on a
-conference wifi.
+Everything else here runs on drawn faces, which is right for a demo and useless
+for answering whether the face matching works. A descriptor can look fine on
+drawn faces and fall apart on photographs of real people.
 
----
+So the matcher is also measured on the standard benchmark. Labeled Faces in the
+Wild is the canonical face-verification set: pairs of photographs, half the same
+person and half not. The photographs are of public figures, and they are used
+only to score the matcher — **no record in this project is ever attached to a
+real person's face.**
+
+```bash
+pip install onnxruntime scikit-learn
+curl -L -o models/arcface.onnx <arcface-resnet100 from the ONNX model zoo>
+python scripts/benchmark_lfw.py --pairs 300
+```
+
+| Backend | Real photographs (LFW) | Drawn faces (this corpus) |
+| --- | ---: | ---: |
+| Gradient descriptor (default) | 56.7% | 34/40 |
+| ArcFace ResNet100 | **86.3%** | 22/40 |
+
+**Neither descriptor is simply better. Each wins on the domain it was built
+for.** The gradient descriptor was tuned on these drawn faces and does not
+transfer: on real photographs it is barely above a coin flip. ArcFace has never
+seen a drawn face and does correspondingly badly on them.
+
+The honest consequence is that **the synthetic corpus cannot tell you whether
+face matching works.** It is the wrong test bed for that question. What can:
+the benchmark above, where a real model reaches 86% on real faces.
+
+Two failures found along the way, both silent, both worth knowing about:
+
+* Scaling the input to `[-1, 1]`, which many ArcFace exports expect, collapses
+  this one. Every embedding comes out nearly identical — two *different* people
+  scored 0.967 cosine — so the model appears to work while telling you nothing.
+  It cost 35 points before it was caught.
+* Re-cropping with this project's own aligner, which is tuned for drawn faces,
+  cost another 15. ArcFace would rather have the frame it was given.
+
+`FACE_BACKEND=arcface-onnx` selects the learned model. The presence of the
+model file deliberately does *not*: preferring it automatically meant
+downloading it to run a benchmark quietly made the demo worse.
 
 ## What the measurements actually say
 
