@@ -199,6 +199,57 @@ Two failures found along the way, both silent, both worth knowing about:
 model file deliberately does *not*: preferring it automatically meant
 downloading it to run a benchmark quietly made the demo worse.
 
+### Matching a real face, live
+
+Everything above scores drawn faces. The **Match a real face** panel does the
+other thing: you enrol a real photograph into each registry and compare them, or
+match a live camera frame against what you enrolled.
+
+Three properties are worth stating plainly, because a tool aimed at displaced
+people holding face data is exactly the thing that should be viewed with
+suspicion:
+
+* **Nothing leaves the device.** The detector, the landmark model and the
+  recognition network are served from this site and run in the browser. There is
+  no upload endpoint, and on the deployed build there is no server at all.
+* **Nothing is stored.** Descriptors are held in a JavaScript variable for as
+  long as the tab is open. Not `localStorage`, not IndexedDB, not a cookie. A
+  reload wipes them, and **Clear all faces** is always on screen.
+* **No real face is ever attached to a fabricated record.** The panel matches
+  self-enrolled faces against each other. It does not put a real person's
+  photograph into the demo registries.
+
+It uses face-api.js (TinyFaceDetector, 68-point landmarks, and a 128-number
+recognition descriptor), vendored into `web/static/faceapi/` rather than pulled
+from a CDN, so it works offline and no third party learns who opened it.
+
+**Measured on real photographs.** Twelve LFW pairs, six the same person and six
+not, run through the same code path the panel uses:
+
+| | Descriptor distance |
+| --- | --- |
+| Same person | 0.35 – 0.55 |
+| Different people | 0.68 – 0.87 |
+
+The threshold of 0.6 sits in the gap, and it separated **all 11 detectable pairs
+correctly**. Two things had to be fixed to get there, and both were found by
+measurement rather than by reading the code:
+
+* The detector missed 5 of 24 portraits at its default input size. A sweep put
+  it at 23 of 24: `inputSize` 416 beats both 320 (19/24) and 512 (10/24), which
+  degrades badly rather than gracefully.
+* A linear distance-to-percentage mapping displayed genuine matches at 45–66%,
+  which reads as *probably not them* for a pair that is in fact the same person.
+  The shipped curve is centred on the threshold, so 50% means "on the line" and
+  the same pairs read 61–89% against 9–33% for different people. It is a
+  restatement of the distance, not a probability, and the raw distance is shown
+  next to it.
+
+None of which changes the rule the rest of this project is built on. The panel
+shows **FACIAL SIMILARITY IS AN INDICATOR, NOT PROOF OF IDENTITY** and **HUMAN
+VERIFICATION REQUIRED** before it shows any number, not underneath one the
+reader has already formed an opinion about.
+
 ## What the measurements actually say
 
 The evaluator scores the top-1 decision against planted ground truth

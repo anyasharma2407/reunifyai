@@ -67,8 +67,15 @@ def main() -> int:
     # --- frontend ---------------------------------------------------------
     (out / "static").mkdir(parents=True)
     for name in ("app.js", "demo.js", "style.css", "static-mode.js",
-                 "engine.js", "tryit.js", "nearby.js"):
+                 "engine.js", "tryit.js", "nearby.js", "livefaces.js"):
         shutil.copy2(STATIC / name, out / "static" / name)
+
+    # The face-api bundle and its model weights. They are vendored rather than
+    # pulled from a CDN so the live face panel keeps working offline and so no
+    # third party gets to see who opened it.
+    faceapi_src = STATIC / "faceapi"
+    if faceapi_src.exists():
+        shutil.copytree(faceapi_src, out / "static" / "faceapi")
 
     html = (STATIC / "index.html").read_text()
     # The shim has to be installed before app.js runs, because app.js fetches
